@@ -34,9 +34,14 @@ exports.start = _.curry(function (worker, config) {
     .reject(w.ignored)
     .reject(w.migrated);
 
-  // migrate dirty docs
+  // force migrate function to return a stream
   var migrate = _.wrapCallback(w.migrate);
-  var updated = dirty.map(migrate).parallel(config.concurrency);
+
+  // migrate dirty docs
+  var updated = dirty
+      .doto(exports.logMigrating(config))
+      .map(migrate)
+      .parallel(config.concurrency);
 
   // write updates to couchdb
   var writes = updated.flatMap(couchr.post(config.database + '/'));
@@ -89,6 +94,16 @@ exports.loadWorker = function (worker, config) {
     required('migrate', 'function');
     return w;
 };
+
+/**
+ * Outputs log info for documents about to be migrated
+ */
+
+exports.logMigrating = _.curry(function (config, doc) {
+    console.log(
+      '[' + config.name + '] Migrating ' + doc._id + ' rev:' + doc._rev
+    );
+});
 
 /**
  * Outputs errors to console
