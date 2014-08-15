@@ -44,8 +44,8 @@ exports.start = _.curry(function (worker, db_url, config) {
   // output results
   writes
     .pluck('body')
-    .errors(exports.logError)
-    .each(exports.logPut);
+    .errors(exports.logError(config))
+    .each(exports.logPut(config));
 
   return {
       stop: changes.stop.bind('changes')
@@ -91,14 +91,14 @@ exports.loadWorker = function (worker, config) {
  * Outputs errors to console
  */
 
-exports.logError = _.curry(function (worker, err) {
-    console.error('[' + worker.name + '] ' + err.stack);
+exports.logError = _.curry(function (config, err) {
+    console.error('[' + config.name + '] ' + err.stack);
 });
 
 /**
  * Outputs PUTs to console
  */
 
-exports.logPut = _.curry(function (worker, res) {
-    console.log('[' + worker.name + '] PUT ' + res.id + ' rev:' + res.rev);
+exports.logPut = _.curry(function (config, res) {
+    console.log('[' + config.name + '] PUT ' + res.id + ' rev:' + res.rev);
 });
