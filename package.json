@@ -1,0 +1,23 @@
+{
+  "name": "couch-worker",
+  "descriptions": "Shared code for managing couchdb workers",
+  "version": "1.0.0",
+  "dependencies": {
+    "highland": "^1.27.1",
+    "highland-couchr": "^1.2.1"
+  },
+  "devDependencies": {
+    "multicouch": "^0.8.2",
+    "pre-tape": "0.0.1",
+    "rimraf": "^2.2.8",
+    "tap": "^0.4.12",
+    "tape": "^2.14.0",
+    "mkdirp": "^0.5.0"
+  },
+  "scripts": {
+    "test": "./node_modules/.bin/tap test/*.js"
+  },
+  "publishConfig": {
+    "registry": "http://npm.rmcloud.com:8123"
+  }
+}
