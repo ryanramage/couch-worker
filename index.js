@@ -17,7 +17,7 @@ exports.createWorker = function (worker) {
  * Load worker and start listening to CouchDB changes.
  */
 
-exports.start = _.curry(function (worker, db_url, config) {
+exports.start = _.curry(function (worker, config) {
   // checks for required properties on config object
   config = exports.readConfig(config);
 
@@ -27,7 +27,7 @@ exports.start = _.curry(function (worker, db_url, config) {
   // start listening to changes feed
   var opts = config.follow || {};
   opts.include_docs = true;
-  var changes = couchr.changes(db_url, opts);
+  var changes = couchr.changes(config.database, opts);
 
   // find un-migrated docs
   var dirty = changes.pluck('doc')
@@ -39,7 +39,7 @@ exports.start = _.curry(function (worker, db_url, config) {
   var updated = dirty.map(migrate).parallel(config.concurrency);
 
   // write updates to couchdb
-  var writes = updated.flatMap(couchr.post(db_url + '/'));
+  var writes = updated.flatMap(couchr.post(config.database + '/'));
 
   // output results
   writes
@@ -59,6 +59,9 @@ exports.start = _.curry(function (worker, db_url, config) {
 exports.readConfig = function (config) {
     if (typeof config.name !== 'string') {
         throw new Error('Expected config.name to be a string');
+    }
+    if (typeof config.database !== 'string') {
+        throw new Error('Expected config.database to be a URL');
     }
     // default to processing 4 docs at once
     config.concurrency = config.concurrency || 4;
