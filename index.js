@@ -61,10 +61,13 @@ exports.start = _.curry(function (worker, config) {
  * Writes a batch to couchdb with updates from a migration
  */
 
-exports.writeBatch = _.curry(function (database, doc) {
+exports.writeBatch = _.curry(function (database, docs) {
+    if (!Array.isArray(docs)) {
+        docs = [docs];
+    }
     return couchr.post(database + '/_bulk_docs', {
         all_or_nothing: true, // write conflicts to db
-        docs: [doc]
+        docs: docs
     });
 });
 
