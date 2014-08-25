@@ -3,7 +3,8 @@ var couchr = require('highland-couchr');
 var pretape = require('pre-tape');
 var rimraf = require('rimraf');
 var mkdirp = require('mkdirp');
-var exampleworker = require('./lib/example-worker');
+var basic_worker = require('./lib/basic-worker');
+var slow_worker = require('./lib/slow-worker');
 var exec = require('child_process').exec;
 var _ = require('highland');
 
@@ -61,7 +62,7 @@ test('pick up non-migrated documents from couchdb', function (t) {
     database: COUCH_URL + '/example',
   };
 
-  var worker = exampleworker.start(config);
+  var worker = basic_worker.start(config);
   var migrated_doc = require('./fixtures/migrated.json').doc;
   var notmigrated_doc = require('./fixtures/notmigrated.json').doc;
   delete notmigrated_doc._rev;
@@ -80,5 +81,38 @@ test('pick up non-migrated documents from couchdb', function (t) {
         t.end();
       });
     }, 2000);
+  });
+});
+
+test('enable conflicts when writing documents back to couchdb', function (t) {
+  var store = {};
+  var config = {
+    name: 'couch-worker-example',
+    database: COUCH_URL + '/example',
+  };
+
+  var worker = slow_worker.start(config);
+  var migrated_doc = require('./fixtures/migrated.json').doc;
+  var notmigrated_doc = require('./fixtures/notmigrated.json').doc;
+  delete notmigrated_doc._rev;
+
+  var url = COUCH_URL + '/example/' + notmigrated_doc._id;
+
+  couchr.put(url, notmigrated_doc).apply(function (res) {
+    setTimeout(function () {
+        var conflict_doc = require('./fixtures/conflict.json');
+        conflict_doc._rev = res.body.rev;
+        couchr.put(url, conflict_doc).apply(function () {
+            setTimeout(function () {
+              couchr.get(url, {conflicts: true}).apply(function (res) {
+                var doc = res.body;
+                t.equal(doc._rev.substr(0, 2), '2-', '_rev should only be two');
+                t.equal(doc._conflicts.length, 1, 'there should be 1 conflict');
+                worker.stop();
+                t.end();
+              });
+            }, 4000);
+        });
+    }, 1000);
   });
 });

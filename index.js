@@ -44,7 +44,7 @@ exports.start = _.curry(function (worker, config) {
       .parallel(config.concurrency);
 
   // write updates to couchdb
-  var writes = updated.flatMap(couchr.post(config.database + '/'));
+  var writes = updated.flatMap(exports.writeBatch(config.database));
 
   // output results
   writes
@@ -55,6 +55,17 @@ exports.start = _.curry(function (worker, config) {
   return {
       stop: changes.stop.bind('changes')
   };
+});
+
+/**
+ * Writes a batch to couchdb with updates from a migration
+ */
+
+exports.writeBatch = _.curry(function (database, doc) {
+    return couchr.post(database + '/_bulk_docs', {
+        all_or_nothing: true, // write conflicts to db
+        docs: [doc]
+    });
 });
 
 /**
