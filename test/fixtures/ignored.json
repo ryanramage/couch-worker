@@ -1,0 +1,16 @@
+{
+    "seq": 104604,
+    "id": "0aaac7a1f80f7e629554672a22000f17",
+    "changes": [
+        {
+            "rev": "1-d5844a2d417e846071cc32fa2b90fc71"
+        }
+    ],
+    "doc": {
+        "_id": "0aaac7a1f80f7e629554672a22000f17",
+        "_rev": "1-d5844a2d417e846071cc32fa2b90fc71",
+        "nothing": "to",
+        "do": "with",
+        "example": "worker"
+    }
+}
