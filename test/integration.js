@@ -109,11 +109,14 @@ test('enable conflicts when writing documents back to couchdb', function (t) {
               couchr.get(url, {conflicts: true}).apply(function (res) {
                 var doc = res.body;
                 t.equal(doc._rev.substr(0, 2), '2-', '_rev should only be two');
-                t.equal(doc._conflicts.length, 1, 'there should be 1 conflict');
+                t.equal(
+                  doc._conflicts && doc._conflicts.length, 1,
+                  'there should be 1 conflict'
+                );
                 worker.stop();
                 t.end();
               });
-            }, 4000);
+            }, 2000);
         });
     }, 1000);
   });
@@ -216,4 +219,56 @@ test('include _conflicts in documents provided to workers', function (t) {
             t.ok(res.body[0].ok, 'put conflicting revision');
         });
     });
+});
+
+test('skip change events for docs with in-progress migrations', function (t) {
+  var store = {};
+  var config = {
+    name: 'couch-worker-example',
+    database: COUCH_URL + '/example',
+  };
+
+  var migrate_calls = [];
+  var tmpworker = createWorker(function (config) {
+    var api = {};
+    api.ignored = function (doc) {
+      return false;
+    };
+    api.migrated = function (doc) {
+      return doc.migrated;
+    };
+    api.migrate = function (doc, callback) {
+      setTimeout(function () {
+        migrate_calls.push(doc._rev);
+        doc.migrated = true;
+        return callback(null, doc);
+      }, 2000);
+    };
+    return api;
+  });
+
+  var worker = tmpworker.start(config);
+  var doc = {_id: 'testdoc', foo: 'bar'};
+
+  var url = COUCH_URL + '/example/testdoc';
+
+  couchr.put(url, doc).apply(function (res) {
+    doc.asdf = 'asdf';
+    doc._rev = res.body.rev;
+    couchr.put(url, doc).apply(function () {
+      setTimeout(function () {
+        couchr.get(url, {conflicts: true}).apply(function (res) {
+          var newdoc = res.body;
+          t.equal(newdoc._rev.substr(0, 2), '2-', '_rev should only be two');
+          t.equal(
+            newdoc._conflicts && newdoc._conflicts.length, 1,
+            'there should be 1 conflict'
+          );
+          t.equal(migrate_calls.length, 1);
+          worker.stop();
+          t.end();
+        });
+      }, 4000);
+    });
+  });
 });
