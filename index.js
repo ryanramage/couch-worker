@@ -27,6 +27,7 @@ exports.start = _.curry(function (worker, config) {
   // start listening to changes feed
   var opts = config.follow || {};
   opts.include_docs = true;
+  opts.conflicts = true;
   var changes = couchr.changes(config.database, opts);
 
   // find un-migrated docs

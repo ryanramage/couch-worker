@@ -6,6 +6,7 @@ var mkdirp = require('mkdirp');
 var basic_worker = require('./lib/basic-worker');
 var slow_worker = require('./lib/slow-worker');
 var multidoc_worker = require('./lib/multidoc-worker');
+var createWorker = require('../index').createWorker;
 var exec = require('child_process').exec;
 var _ = require('highland');
 
@@ -163,5 +164,56 @@ test('return multiple docs from worker', function (t) {
       t.deepEqual(b.body, {_id: 'b', b: notmigrated_doc.b});
       worker.stop();
       t.end();
+    });
+});
+
+test('include _conflicts in documents provided to workers', function (t) {
+    t.plan(4);
+    // worker variable populated later, defined here for use inside api.migrate
+    var worker;
+
+    var conflictworker = createWorker(function (config) {
+        var api = {};
+        api.ignored = function (doc) {
+            t.equal(
+                doc._conflicts && doc._conflicts.length, 1,
+                'should have one _conflict revision'
+            );
+            return false;
+        };
+        api.migrated = function (doc) {
+            t.equal(
+                doc._conflicts && doc._conflicts.length, 1,
+                'should have one _conflict revision'
+            );
+            return false;
+        };
+        api.migrate = function (doc, callback) {
+            t.equal(
+                doc._conflicts && doc._conflicts.length, 1,
+                'should have one _conflict revision'
+            );
+            worker.stop();
+            t.end();
+        };
+        return api;
+    });
+
+    var config = {
+      name: 'couch-worker-example',
+      database: COUCH_URL + '/example',
+    };
+
+    var a = {_id: 'testdoc', a: 1};
+    var b = {_id: 'testdoc', b: 2};
+
+    couchr.put(config.database + '/testdoc', a).apply(function (res) {
+        // start listening to changes
+        worker = conflictworker.start(config);
+        // create a conflicting revision
+        var opt = {all_or_nothing: true, docs: [b]};
+        couchr.post(config.database + '/_bulk_docs', opt).apply(function (res) {
+            t.ok(res.body[0].ok, 'put conflicting revision');
+        });
     });
 });
