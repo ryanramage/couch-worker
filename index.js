@@ -21,6 +21,10 @@ exports.start = _.curry(function (worker, config) {
   // checks for required properties on config object
   config = exports.readConfig(config);
 
+  // where to store checkpoint / sequence id during processing
+  var checkpoint_url = config.database +
+    '/_local/' + encodeURIComponent(config.name);
+
   // initialize worker
   var w = exports.loadWorker(worker, config);
 
@@ -28,7 +32,7 @@ exports.start = _.curry(function (worker, config) {
   var f = _.wrapCallback(w.migrate);
 
   // start listening to changes feed
-  var changes = exports.listen(config);
+  var changes = exports.listen(checkpoint_url, config);
 
   // create a stream of migration events for docs that are not ignored
   // and failed the migrated test provided by the worker
@@ -48,7 +52,7 @@ exports.start = _.curry(function (worker, config) {
 
   // write updates to couchdb
   var writes = updated
-    .flatMap(exports.writeBatch(config.database))
+    .flatMap(exports.writeBatch(config))
     .doto(exports.removeInProgress(inprogress));
 
   // output results
@@ -57,7 +61,7 @@ exports.start = _.curry(function (worker, config) {
     .each(exports.logBatch(config));
 
   return {
-      stop: changes.stop.bind('changes')
+      stop: changes.stop
   };
 });
 
@@ -67,11 +71,18 @@ exports.start = _.curry(function (worker, config) {
  */
 
 exports.getDirty = function (worker, changes) {
-  return changes.pluck('doc')
-    .reject(worker.ignored)
-    .reject(worker.migrated)
-    .map(function (doc) {
-      return {original: doc};
+  return changes
+    .reject(function (change) {
+      return worker.ignored(change.doc)
+    })
+    .reject(function (change) {
+      return worker.migrated(change.doc)
+    })
+    .map(function (change) {
+      return {
+        original: change.doc,
+        seq: change.seq
+      };
     });
 };
 
@@ -80,11 +91,58 @@ exports.getDirty = function (worker, changes) {
  * stream of change events
  */
 
-exports.listen = function (config) {
+exports.listen = function (checkpoint_url, config) {
   var opts = config.follow || {};
   opts.include_docs = true;
   opts.conflicts = true;
-  return couchr.changes(config.database, opts);
+
+  // TODO: add test for overriding since in config
+  if (config.follow && config.follow.since) {
+    opts.since = config.follow.since;
+    return couchr.changes(config.database, opts);
+  }
+
+  // this stream first gets the last good sequence id and then
+  // subscribes to the changes feed from that point
+  var stopped = false;
+  var s = _(function (push, next) {
+    function start() {
+      if (!stopped) {
+        var changes = couchr.changes(config.database, opts);
+        s.stop = changes.stop;
+        next(changes);
+      }
+    }
+    var errored = false;
+    couchr.get(checkpoint_url, {})
+      .stopOnError(function (err, rethrow) {
+        errored = true;
+        console.error(['error', err.error]);
+        if (err.error === 'not_found') {
+          opts.since = 0;
+          start();
+        }
+        else {
+          rethrow(err);
+        }
+      })
+      .apply(function (res) {
+        if (!errored) {
+          console.error(['apply', res.body]);
+          // TODO: add a version check here?
+          // so it restarts from 0 if we've changed the worker version
+          opts.since = res.body.seq;
+          start();
+        }
+      });
+  });
+  s.stop = function (cb) {
+    stopped = true;
+    if (cb) {
+      return cb();
+    }
+  };
+  return s;
 };
 
 /**
@@ -103,16 +161,25 @@ exports.migrate = _.curry(function (f, change) {
  * Writes a batch to couchdb with updates from a migration
  */
 
-exports.writeBatch = _.curry(function (database, migration) {
+exports.writeBatch = _.curry(function (config, migration) {
     var result = migration.result;
     migration.writes = Array.isArray(result) ? result : [result];
-    var batch = couchr.post(database + '/_bulk_docs', {
+    var checkpoint = {
+      _id: '_local/' + config.name,
+      seq: migration.seq
+    };
+    if (config.checkpoint_rev) {
+      checkpoint._rev = checkpoint_rev;
+    }
+    var batch = couchr.post(config.database + '/_bulk_docs', {
         all_or_nothing: true, // write conflicts to db
-        docs: migration.writes
+        docs: migration.writes.concat([checkpoint])
     });
     // return original migration on success
     return batch.map(function (res) {
       migration.response = res.body;
+      // checkpoint is last doc we sent
+      config.checkpoint_rev = res.body[res.body.length - 1]._rev;
       return migration;
     });
 });
