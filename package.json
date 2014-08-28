@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "dependencies": {
     "highland": "^1.27.1",
-    "highland-couchr": "^1.2.1"
+    "highland-couchr": "^1.2.2"
   },
   "devDependencies": {
     "multicouch": "^0.8.2",
