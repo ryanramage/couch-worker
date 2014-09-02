@@ -49,7 +49,6 @@ var test = pretape({
     }
 })
 
-
 test('check couchdb started and example database created', function (t) {
   couchr.get(COUCH_URL + '/example', {}).apply(function (x) {
     t.equal(x.body.db_name, 'example');
@@ -58,7 +57,6 @@ test('check couchdb started and example database created', function (t) {
 });
 
 test('pick up non-migrated documents from couchdb', function (t) {
-  var store = {};
   var config = {
     name: 'couch-worker-example',
     database: COUCH_URL + '/example',
@@ -87,7 +85,6 @@ test('pick up non-migrated documents from couchdb', function (t) {
 });
 
 test('enable conflicts when writing documents back to couchdb', function (t) {
-  var store = {};
   var config = {
     name: 'couch-worker-example',
     database: COUCH_URL + '/example',
@@ -123,7 +120,6 @@ test('enable conflicts when writing documents back to couchdb', function (t) {
 });
 
 test('return multiple docs from worker', function (t) {
-    var store = {};
     var config = {
       name: 'couch-worker-example',
       database: COUCH_URL + '/example',
@@ -222,10 +218,10 @@ test('include _conflicts in documents provided to workers', function (t) {
 });
 
 test('skip change events for docs with in-progress migrations', function (t) {
-  var store = {};
   var config = {
     name: 'couch-worker-example',
     database: COUCH_URL + '/example',
+    concurrency: 5
   };
 
   var migrate_calls = [];
@@ -240,9 +236,10 @@ test('skip change events for docs with in-progress migrations', function (t) {
     api.migrate = function (doc, callback) {
       setTimeout(function () {
         migrate_calls.push(doc._rev);
+        delete doc._rev;
         doc.migrated = true;
         return callback(null, doc);
-      }, 2000);
+      }, 1000);
     };
     return api;
   });
@@ -255,20 +252,98 @@ test('skip change events for docs with in-progress migrations', function (t) {
   couchr.put(url, doc).apply(function (res) {
     doc.asdf = 'asdf';
     doc._rev = res.body.rev;
-    couchr.put(url, doc).apply(function () {
-      setTimeout(function () {
-        couchr.get(url, {conflicts: true}).apply(function (res) {
-          var newdoc = res.body;
-          t.equal(newdoc._rev.substr(0, 2), '2-', '_rev should only be two');
-          t.equal(
-            newdoc._conflicts && newdoc._conflicts.length, 1,
-            'there should be 1 conflict'
-          );
-          t.equal(migrate_calls.length, 1);
-          worker.stop();
-          t.end();
-        });
-      }, 4000);
-    });
+    setTimeout(function () {
+      couchr.get(url, {conflicts: true}).apply(function (res) {
+        var newdoc = res.body;
+        t.equal(newdoc._rev.substr(0, 2), '1-', '_rev should only be one');
+        t.equal(
+          newdoc._conflicts && newdoc._conflicts.length, 1,
+          'there should be 1 conflict'
+        );
+        t.equal(migrate_calls.length, 2, 'two calls to migrate function');
+        worker.stop();
+        t.end();
+      });
+    }, 3000);
   });
+});
+
+test('resume changes processing from last processed seq id', function (t) {
+  t.plan(2);
+
+  var config = {
+    name: 'couch-worker-example',
+    database: COUCH_URL + '/example'
+  };
+
+  // extracted here so we can modify after creating a worker
+  var predicate = function (doc) {
+    return doc.migrated;
+  };
+  var migrate = function (doc) {
+    doc.migrated = true;
+    return doc;
+  };
+
+  var migrate_calls = [];
+  var tmpworker = createWorker(function (config) {
+    var api = {};
+    api.ignored = function (doc) {
+      return false;
+    };
+    api.migrated = function (doc) {
+      return predicate(doc);
+    };
+    api.migrate = function (doc, callback) {
+      migrate_calls.push(doc._id);
+      return callback(null, migrate(doc));
+    };
+    return api;
+  });
+
+  var url = COUCH_URL + '/example';
+
+  var tasksA = _([
+    couchr.post(url, {_id: 'a'}),
+    couchr.post(url, {_id: 'b'}),
+    couchr.post(url, {_id: 'c'})
+  ]);
+
+  var tasksB = _([
+    couchr.post(url, {_id: 'd'}),
+    couchr.post(url, {_id: 'e'}),
+    couchr.post(url, {_id: 'f'})
+  ]);
+
+  var w = tmpworker.start(config);
+
+  tasksA.series().apply(function (a, b, c) {
+    setTimeout(function () {
+      t.deepEqual(migrate_calls, ['a','b','c']);
+      // stop listening to changes
+      w.stop(function () {
+        // change predicate and migrate function so it'll re-run on a,b,c if
+        // it encounters them
+        predicate = function (doc) {
+          return doc.migrated2;
+        };
+        migrate = function (doc) {
+          doc.migrated2 = true;
+          return doc;
+        };
+        // add some more docs
+        tasksB.series().apply(function (d, e, f) {
+          // resume listening to changes
+          var w2 = tmpworker.start(config);
+          setTimeout(function () {
+            // check we didn't repeat 'migrated' checks for a,b,c
+            t.deepEqual(migrate_calls, ['a','b','c','d','e','f']);
+            w2.stop();
+            t.end();
+          }, 2000);
+        });
+      });
+    }, 2000);
+  });
+
 });
