@@ -49,8 +49,6 @@ var test = pretape({
     }
 })
 
-
-/*
 test('check couchdb started and example database created', function (t) {
   couchr.get(COUCH_URL + '/example', {}).apply(function (x) {
     t.equal(x.body.db_name, 'example');
@@ -223,6 +221,7 @@ test('skip change events for docs with in-progress migrations', function (t) {
   var config = {
     name: 'couch-worker-example',
     database: COUCH_URL + '/example',
+    concurrency: 5
   };
 
   var migrate_calls = [];
@@ -237,9 +236,10 @@ test('skip change events for docs with in-progress migrations', function (t) {
     api.migrate = function (doc, callback) {
       setTimeout(function () {
         migrate_calls.push(doc._rev);
+        delete doc._rev;
         doc.migrated = true;
         return callback(null, doc);
-      }, 2000);
+      }, 1000);
     };
     return api;
   });
@@ -252,24 +252,21 @@ test('skip change events for docs with in-progress migrations', function (t) {
   couchr.put(url, doc).apply(function (res) {
     doc.asdf = 'asdf';
     doc._rev = res.body.rev;
-    couchr.put(url, doc).apply(function () {
-      setTimeout(function () {
-        couchr.get(url, {conflicts: true}).apply(function (res) {
-          var newdoc = res.body;
-          t.equal(newdoc._rev.substr(0, 2), '2-', '_rev should only be two');
-          t.equal(
-            newdoc._conflicts && newdoc._conflicts.length, 1,
-            'there should be 1 conflict'
-          );
-          t.equal(migrate_calls.length, 1);
-          worker.stop();
-          t.end();
-        });
-      }, 4000);
-    });
+    setTimeout(function () {
+      couchr.get(url, {conflicts: true}).apply(function (res) {
+        var newdoc = res.body;
+        t.equal(newdoc._rev.substr(0, 2), '1-', '_rev should only be one');
+        t.equal(
+          newdoc._conflicts && newdoc._conflicts.length, 1,
+          'there should be 1 conflict'
+        );
+        t.equal(migrate_calls.length, 2, 'two calls to migrate function');
+        worker.stop();
+        t.end();
+      });
+    }, 3000);
   });
 });
-*/
 
 test('resume changes processing from last processed seq id', function (t) {
   t.plan(2);
