@@ -1,4 +1,6 @@
 var couchr = require('highland-couchr');
+var moment = require('moment');
+var os = require('os');
 var _ = require('highland');
 
 
@@ -28,52 +30,79 @@ exports.start = _.curry(function (worker, config) {
       }
     }
   };
-
   // checks for required properties on config object
   config = exports.readConfig(config);
 
-  // get the checkpoint document from couchdb
-  exports.getCheckpoint(config).apply(function (checkpoint) {
-    if (api.stopped) {
-      // worker already called stop(), don't start listening
-      return;
-    }
+  // make sure the log database exists
+  exports.ensureDB(config.log_database).apply(function (res) {
 
-    // store checkpoint in config for use when putting batches
-    config.checkpoint_rev = checkpoint._rev;
+    // get the checkpoint document from couchdb
+    exports.getCheckpoint(config).apply(function (checkpoint) {
+      if (api.stopped) {
+        // worker already called stop(), don't start listening
+        return;
+      }
+      // store checkpoint in config for use when putting batches
+      config.checkpoint_rev = checkpoint._rev;
 
-    // initialize worker
-    var w = exports.loadWorker(worker, config);
+      // initialize worker
+      var w = exports.loadWorker(worker, config);
 
-    // start listening to changes feed
-    var changes = exports.listen(checkpoint.seq, config);
+      // start listening to changes feed
+      var changes = exports.listen(checkpoint.seq, config);
 
-    // update worker stop() function to stop changes feed
-    api.stop = function (cb) {
-      api.stopped = true;
-      changes.stop(cb);
-    };
+      // update worker stop() function to stop changes feed
+      api.stop = function (cb) {
+        api.stopped = true;
+        changes.stop(cb);
+      };
 
-    // create a stream of migration events for docs that are not ignored
-    // and failed the migrated test provided by the worker
-    var updated = exports.process(w, config, changes)
-      .parallel(config.concurrency);
+      // create a stream of migration events for docs that are not ignored
+      // and failed the migrated test provided by the worker
+      var updated = exports.process(w, config, changes)
+        .parallel(config.concurrency);
 
-    // write updates to couchdb
-    var writes = updated
-      .flatMap(exports.writeBatch(config))
-      .doto(exports.removeInProgress(config));
+      // write updates to couchdb
+      var writes = updated
+        .flatMap(exports.writeBatch(config))
+        .doto(exports.removeInProgress(config));
 
-    // output results
-    writes
-      .errors(exports.logError(config))
-      .each(exports.logBatch(config));
+      // output results
+      writes
+        .errors(exports.logError(config))
+        .each(exports.logBatch(config));
+
+    });
 
   });
-
   // return worker object
   return api;
 });
+
+/**
+ * Makes sure the database at the given location exists
+ */
+
+exports.ensureDB = function (url) {
+  return couchr.get(url, {}).consume(function (err, x, push, next) {
+    if (err) {
+      if (err.error === 'not_found') {
+        next(couchr.put(url, {}));
+      }
+      else {
+        push(err);
+        next();
+      }
+    }
+    if (x === _.nil) {
+      push(null, _.nil);
+    }
+    else {
+      push(null, x);
+      next();
+    }
+  });
+};
 
 /**
  * Process a changes stream returning a stream of update arrays
@@ -115,10 +144,95 @@ exports.process = function (worker, config, changes) {
     }
     else {
       // migrate document
+      // console
       exports.addInProgress(config, migration);
       exports.logMigrating(config, migration);
-      return exports.migrate(f, migration);
+      var result = exports.migrate(f, migration);
+      return result.consume(function (err, x, push, next) {
+        if (err) {
+          next(
+            // write to log database
+            exports.writeErrorLog(config, err, migration).map(function (res) {
+              // write checkpoint back to source db so we can continue
+              // processing changes
+              migration.result = [];
+              return migration;
+            })
+          );
+        }
+        // emit results as normal
+        else if (x === _.nil) {
+          push(null, _.nil);
+        }
+        else {
+          push(null, x);
+          next();
+        }
+      });
     }
+  });
+};
+
+/**
+ * Writes an error message to the log database, including information
+ * about the error, time, system, original document, source database etc.
+ */
+
+exports.writeErrorLog = function (config, err, migration) {
+  var logdoc = {
+    worker: {
+      name: config.name,
+      hostname: os.hostname(),
+      platform: os.platform(),
+      node_version: process.version,
+      arch: os.arch(),
+      addresses: exports.getAddresses()
+    },
+    error: exports.errorToJSON(err),
+    time: moment().toISOString(),
+    database: config.database,
+    seq: migration.seq,
+    doc: migration.original
+  };
+  return couchr.post(config.log_database, logdoc);
+};
+
+/**
+ * Converts an error object to a JSON-compatible representation
+ */
+
+exports.errorToJSON = function (err) {
+  var e = {};
+  if (err.message) {
+    e.message = err.message;
+  }
+  if (err.stack) {
+    e.stack = err.stack;
+  }
+  for (var k in err) {
+    if (err.hasOwnProperty(k)) {
+      var val = err[k];
+      // make sure we can serialize it (JSON.stringify will
+      // return undefined if not)
+      if (JSON.stringify(val)) {
+        e[k] = val;
+      }
+    }
+  }
+  return e;
+};
+
+exports.getAddresses = function () {
+  var interfaces = os.networkInterfaces();
+  var results = [];
+  for (var k in interfaces) {
+    var xs = interfaces[k];
+    results = results.concat(xs.filter(function (x) {
+      return !x.internal;
+    }));
+  };
+  return results.map(function (r) {
+    return r.address;
   });
 };
 
@@ -199,11 +313,20 @@ exports.listen = function (since, config) {
  */
 
 exports.migrate = _.curry(function (f, migration) {
-  return f(migration.original).map(function (result) {
+  var doc = exports.cloneJSON(migration.original);
+  return f(doc).map(function (result) {
     migration.result = result;
     return migration;
   });
 });
+
+/**
+ * Performs a deep clone of a JSON compatible object
+ */
+
+exports.cloneJSON = function (doc) {
+  return JSON.parse(JSON.stringify(doc));
+};
 
 /**
  * Writes a batch to couchdb with updates from a migration
