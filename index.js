@@ -165,10 +165,25 @@ exports.process = function (worker, config, changes) {
           push(null, _.nil);
         }
         else {
+          var source_doc = exports.getSourceDoc(migration, x.result);
           // check if we got the original document back
-          if (!exports.originalIncluded(migration, x.result)) {
+          if (!source_doc) {
             var e = new Error(
               'Migrate function did not return original document'
+            );
+            return next(
+              // write to log database
+              exports.writeErrorLog(config, e, migration).map(function (res) {
+                // write checkpoint back to source db so we can continue
+                // processing changes
+                migration.result = [];
+                return migration;
+              })
+            );
+          }
+          else if (!worker.migrated(source_doc) && !worker.ignored(source_doc)) {
+            var e = new Error(
+              'Migrate result did not match migrated or ignored predicates'
             );
             return next(
               // write to log database
@@ -191,18 +206,18 @@ exports.process = function (worker, config, changes) {
 };
 
 /**
- * Check if the results of a migration funciton call include the original
- * document that caused the change event
+ * Looks for the original document in the results of the migrate function
+ * call, and returns it. Returns null if not found.
  */
 
-exports.originalIncluded = function (migration, result) {
+exports.getSourceDoc = function (migration, result) {
   var r = (Array.isArray(result) ? result: [result]);
   for (var i = 0; i < r.length; i++) {
     if (r[i]._id === migration.original._id) {
-      return true;
+      return r[i];
     }
   }
-  return false;
+  return null;
 };
 
 /**
