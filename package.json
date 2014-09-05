@@ -10,7 +10,8 @@
   "devDependencies": {
     "couch-worker-test-harness": "^1.0.0",
     "jshint": "^2.5.5",
-    "tap": "^0.4.12"
+    "tap": "^0.4.12",
+    "tape": "^2.14.0"
   },
   "scripts": {
     "test": "./node_modules/.bin/jshint index.js && ./node_modules/.bin/tap --timeout 60 test/test-*.js"
