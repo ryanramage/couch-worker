@@ -1,6 +1,6 @@
 var createWorker = require('../index').createWorker;
 var couchr = require('highland-couchr');
-var test = require('./harness');
+var test = require('couch-worker-test-harness');
 
 test('skip change events for docs with in-progress migrations', function (t) {
   var config = {

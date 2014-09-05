@@ -1,6 +1,6 @@
 var createWorker = require('../index').createWorker;
 var couchr = require('highland-couchr');
-var test = require('./harness');
+var test = require('couch-worker-test-harness');
 
 
 test('migrate function must return current doc', function (t) {

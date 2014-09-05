@@ -182,12 +182,12 @@ exports.process = function (worker, config, changes) {
             );
           }
           else if (!worker.migrated(source_doc) && !worker.ignored(source_doc)) {
-            var e = new Error(
+            var e2 = new Error(
               'Migrate result did not match migrated or ignored predicates'
             );
             return next(
               // write to log database
-              exports.writeErrorLog(config, e, migration).map(function (res) {
+              exports.writeErrorLog(config, e2, migration).map(function (res) {
                 // write checkpoint back to source db so we can continue
                 // processing changes
                 migration.result = [];
@@ -278,13 +278,14 @@ exports.getAddresses = function () {
   var results = [];
   for (var k in interfaces) {
     var xs = interfaces[k];
-    results = results.concat(xs.filter(function (x) {
-      return !x.internal;
-    }));
-  };
-  return results.map(function (r) {
-    return r.address;
-  });
+    for (var i = 0; i < xs.length; i++) {
+      var x = xs[i];
+      if (!x.internal) {
+        results.push(x.address);
+      }
+    }
+  }
+  return results;
 };
 
 /**
@@ -328,10 +329,10 @@ exports.getCheckpoint = function (config) {
 exports.getDirty = function (worker, changes) {
   return changes
     .reject(function (change) {
-      return worker.ignored(change.doc)
+      return worker.ignored(change.doc);
     })
     .reject(function (change) {
-      return worker.migrated(change.doc)
+      return worker.migrated(change.doc);
     })
     .map(function (change) {
       return {
