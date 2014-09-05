@@ -150,7 +150,7 @@ exports.process = function (worker, config, changes) {
       var result = exports.migrate(f, migration);
       return result.consume(function (err, x, push, next) {
         if (err) {
-          next(
+          return next(
             // write to log database
             exports.writeErrorLog(config, err, migration).map(function (res) {
               // write checkpoint back to source db so we can continue
@@ -160,17 +160,49 @@ exports.process = function (worker, config, changes) {
             })
           );
         }
-        // emit results as normal
+        // end of data
         else if (x === _.nil) {
           push(null, _.nil);
         }
         else {
-          push(null, x);
-          next();
+          // check if we got the original document back
+          if (!exports.originalIncluded(migration, x.result)) {
+            var e = new Error(
+              'Migrate function did not return original document'
+            );
+            return next(
+              // write to log database
+              exports.writeErrorLog(config, e, migration).map(function (res) {
+                // write checkpoint back to source db so we can continue
+                // processing changes
+                migration.result = [];
+                return migration;
+              })
+            );
+          }
+          else {
+            push(null, x);
+            next();
+          }
         }
       });
     }
   });
+};
+
+/**
+ * Check if the results of a migration funciton call include the original
+ * document that caused the change event
+ */
+
+exports.originalIncluded = function (migration, result) {
+  var r = (Array.isArray(result) ? result: [result]);
+  for (var i = 0; i < r.length; i++) {
+    if (r[i]._id === migration.original._id) {
+      return true;
+    }
+  }
+  return false;
 };
 
 /**
@@ -194,6 +226,10 @@ exports.writeErrorLog = function (config, err, migration) {
     seq: migration.seq,
     doc: migration.original
   };
+  console.error(
+    'ERROR: ' + logdoc.error.message +
+    '\n  for document: ' + logdoc.doc._id + ' rev:' + logdoc.doc._rev
+  );
   return couchr.post(config.log_database, logdoc);
 };
 

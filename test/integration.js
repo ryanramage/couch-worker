@@ -474,3 +474,48 @@ test('log errors to separate db', function (t) {
   });
 
 });
+
+test('migrate function must return current doc', function (t) {
+    var config = {
+      name: 'couch-worker-example',
+      database: COUCH_URL + '/example',
+      log_database: COUCH_URL + '/errors'
+    };
+
+    var tmpworker = createWorker(function (config) {
+        var api = {};
+        api.ignored = function (doc) {
+          return false;
+        };
+        api.migrated = function (doc) {
+          return doc.migrated;
+        };
+        api.migrate = function (doc, callback) {
+          callback(null, [{_id: 'otherdoc', foo: 'bar'}]);
+        };
+        return api;
+    });
+
+    var w = tmpworker.start(config);
+    var doc = {
+      _id: 'testdoc',
+      abc: 123
+    };
+
+    couchr.post(config.database, doc).apply(function (res) {
+      setTimeout(function () {
+        var q = {
+          include_docs: true
+        };
+        couchr.get(config.log_database + '/_all_docs', q).apply(function (res) {
+          var rows = res.body.rows;
+          t.equal(rows.length, 1);
+          t.equal(rows[0].doc.error.message,
+            'Migrate function did not return original document'
+          );
+          w.stop();
+          t.end();
+        });
+      }, 2000);
+    });
+});
