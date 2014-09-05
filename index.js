@@ -419,6 +419,9 @@ exports.readConfig = function (config) {
     if (typeof config.database !== 'string') {
         throw new Error('Expected config.database to be a URL');
     }
+    if (typeof config.log_database !== 'string') {
+        throw new Error('Expected config.log_database to be a URL');
+    }
     // default to processing 4 docs at once
     config.concurrency = config.concurrency || 4;
     return config;
