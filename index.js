@@ -150,7 +150,7 @@ exports.process = function (worker, config, changes) {
       var result = exports.migrate(f, migration);
       return result.consume(function (err, x, push, next) {
         if (err) {
-          next(
+          return next(
             // write to log database
             exports.writeErrorLog(config, err, migration).map(function (res) {
               // write checkpoint back to source db so we can continue
@@ -160,17 +160,64 @@ exports.process = function (worker, config, changes) {
             })
           );
         }
-        // emit results as normal
+        // end of data
         else if (x === _.nil) {
           push(null, _.nil);
         }
         else {
-          push(null, x);
-          next();
+          var source_doc = exports.getSourceDoc(migration, x.result);
+          // check if we got the original document back
+          if (!source_doc) {
+            var e = new Error(
+              'Migrate function did not return original document'
+            );
+            return next(
+              // write to log database
+              exports.writeErrorLog(config, e, migration).map(function (res) {
+                // write checkpoint back to source db so we can continue
+                // processing changes
+                migration.result = [];
+                return migration;
+              })
+            );
+          }
+          else if (!worker.migrated(source_doc) && !worker.ignored(source_doc)) {
+            var e2 = new Error(
+              'Migrate result did not match migrated or ignored predicates'
+            );
+            return next(
+              // write to log database
+              exports.writeErrorLog(config, e2, migration).map(function (res) {
+                // write checkpoint back to source db so we can continue
+                // processing changes
+                migration.result = [];
+                return migration;
+              })
+            );
+          }
+          else {
+            push(null, x);
+            next();
+          }
         }
       });
     }
   });
+};
+
+/**
+ * Looks for the original document in the results of the migrate function
+ * call, and returns it. Returns null if not found.
+ */
+
+exports.getSourceDoc = function (migration, result) {
+  var r = (Array.isArray(result) ? result: [result]);
+  for (var i = 0; i < r.length; i++) {
+    if (r[i]._id === migration.original._id) {
+      return r[i];
+    }
+  }
+  return null;
 };
 
 /**
@@ -194,6 +241,10 @@ exports.writeErrorLog = function (config, err, migration) {
     seq: migration.seq,
     doc: migration.original
   };
+  console.error(
+    'ERROR: ' + logdoc.error.message +
+    '\n  for document: ' + logdoc.doc._id + ' rev:' + logdoc.doc._rev
+  );
   return couchr.post(config.log_database, logdoc);
 };
 
@@ -227,13 +278,14 @@ exports.getAddresses = function () {
   var results = [];
   for (var k in interfaces) {
     var xs = interfaces[k];
-    results = results.concat(xs.filter(function (x) {
-      return !x.internal;
-    }));
-  };
-  return results.map(function (r) {
-    return r.address;
-  });
+    for (var i = 0; i < xs.length; i++) {
+      var x = xs[i];
+      if (!x.internal) {
+        results.push(x.address);
+      }
+    }
+  }
+  return results;
 };
 
 /**
@@ -277,10 +329,10 @@ exports.getCheckpoint = function (config) {
 exports.getDirty = function (worker, changes) {
   return changes
     .reject(function (change) {
-      return worker.ignored(change.doc)
+      return worker.ignored(change.doc);
     })
     .reject(function (change) {
-      return worker.migrated(change.doc)
+      return worker.migrated(change.doc);
     })
     .map(function (change) {
       return {
