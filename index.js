@@ -111,6 +111,9 @@ exports.ensureDB = function (url) {
 exports.process = function (worker, config, changes) {
   // force migrate function to return a stream
   var f = _.wrapCallback(worker.migrate);
+  if (config.retry_attempts) {
+    f = exports.retry(f, config.retry_attempts, config.retry_interval);
+  }
 
   // create a stream of migration events
   var migrations = changes.map(function (change) {
@@ -203,6 +206,36 @@ exports.process = function (worker, config, changes) {
       });
     }
   });
+};
+
+exports.retry = function (f, attempts, interval) {
+  return function () {
+    var args = Array.prototype.slice.call(arguments);
+    return f.apply(null, args).consume(function (err, x, push, next) {
+      if (err) {
+        if (attempts > 1) {
+          // try again
+          exports.retry(f, attempts - 1, interval)
+            .apply(null, args)
+            .pull(function (err, x) {
+              push(err, x);
+              push(null, _.nil);
+            });
+        }
+        else {
+          push(err);
+          next();
+        }
+      }
+      else if (x === _.nil) {
+        push(null, _.nil);
+      }
+      else {
+        push(null, x);
+        next();
+      }
+    });
+  };
 };
 
 /**
