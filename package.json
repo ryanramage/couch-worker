@@ -10,6 +10,7 @@
   "devDependencies": {
     "couch-worker-test-harness": "^1.0.0",
     "jshint": "^2.5.5",
+    "multicouch": "^0.8.2",
     "tap": "^0.4.12",
     "tape": "^2.14.0"
   },
