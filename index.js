@@ -33,8 +33,11 @@ exports.start = _.curry(function (worker, config) {
   // checks for required properties on config object
   config = exports.readConfig(config);
 
-  // make sure the log database exists
-  exports.ensureDB(config.log_database).apply(function (res) {
+  // initialize worker
+  var w = exports.loadWorker(worker, config);
+
+  // make sure the log database exists and push design doc to target db
+  exports.prepareDBs(config, w).apply(function () {
 
     // get the checkpoint document from couchdb
     exports.getCheckpoint(config).apply(function (checkpoint) {
@@ -44,9 +47,6 @@ exports.start = _.curry(function (worker, config) {
       }
       // store checkpoint in config for use when putting batches
       config.checkpoint_rev = checkpoint._rev;
-
-      // initialize worker
-      var w = exports.loadWorker(worker, config);
 
       // start listening to changes feed
       var changes = exports.listen(checkpoint.seq, config);
@@ -80,10 +80,77 @@ exports.start = _.curry(function (worker, config) {
 });
 
 /**
- * Makes sure the database at the given location exists
+ * Creates the log database if it doesn't exist, and sets up appropriate
+ * design documents
  */
 
-exports.ensureDB = function (url) {
+exports.prepareDBs = function (config, worker) {
+  return _([
+    exports.ensureLogDB(config.log_database),
+    exports.ensureDesignDoc(config, worker)
+  ])
+  .parallel(2);
+};
+
+/**
+ * Make sure there's an up-to-date design doc in place for monitoring
+ * progress of the worker
+ */
+
+exports.ensureDesignDoc = function (config, worker) {
+  var ddoc = {
+    _id: '_design/worker:' + config.name,
+    language: 'javascript',
+    views: {
+      not_migrated: {
+        map: 'function (doc) {\n' +
+          'if (!(' + worker.ignored.toString() + '(doc)) && \n' +
+            '!(' + worker.migrated.toString() + '(doc))) emit(null, 1);' +
+          '}',
+        reduce: '_count'
+      },
+      migrated: {
+        map: 'function (doc) {\n' +
+          'if (!(' + worker.ignored.toString() + '(doc)) && \n' +
+            '(' + worker.migrated.toString() + '(doc))) emit(null, 1);' +
+          '}',
+        reduce: '_count'
+      }
+    }
+  };
+  var ddoc_url = config.database + '/' + ddoc._id;
+  return couchr.get(ddoc_url, {}).consume(function (err, x, push, next) {
+    if (err) {
+      if (err.error === 'not_found') {
+        next(couchr.put(ddoc_url, ddoc));
+      }
+      else {
+        push(err);
+        next();
+      }
+    }
+    else if (x === _.nil) {
+      push(null, _.nil);
+    }
+    else {
+      // check if ddoc is up to date
+      delete x._rev;
+      if (JSON.stringify(x) !== JSON.stringify(ddoc)) {
+        next(couchr.put(ddoc_url, ddoc));
+      }
+      else {
+        // all done, end the stream
+        push(null, _.nil);
+      }
+    }
+  });
+};
+
+/**
+ * Makes sure the log database at the given location exists
+ */
+
+exports.ensureLogDB = function (url) {
   return couchr.get(url, {}).consume(function (err, x, push, next) {
     if (err) {
       if (err.error === 'not_found') {
