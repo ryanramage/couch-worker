@@ -16,7 +16,7 @@ test('send design doc for progress views', function (t) {
   var tmpworker = createWorker(function (config) {
     var api = {};
     api.ignored = function (doc) {
-      return doc.ignored;
+      return doc._id[0] === '_' || doc.ignored;
     };
     api.migrated = function (doc) {
       return doc.migrated;

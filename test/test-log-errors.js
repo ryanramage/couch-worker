@@ -13,7 +13,7 @@ test('log errors to separate db', function (t) {
   var tmpworker = createWorker(function (config) {
     var api = {};
     api.ignored = function (doc) {
-      return false;
+      return doc._id[0] === '_';
     };
     api.migrated = function (doc) {
       return doc.migrated;
@@ -73,7 +73,8 @@ test('log errors to separate db', function (t) {
     doc._rev = res.body.rev;
     setTimeout(function () {
       var logurl = test.COUCH_URL + '/errors/_all_docs';
-      couchr.get(logurl, {include_docs: true}).apply(function (res) {
+      var q = {include_docs: true};
+      couchr.get(logurl, q).apply(function (res) {
         var rows = res.body.rows;
         t.equal(rows.length, 1);
         var logdoc = rows[0].doc;

@@ -14,7 +14,11 @@ test('return multiple docs from worker', function (t) {
     var tmpworker = createWorker(function (config) {
         var api = {};
         api.ignored = function (doc) {
-          return !doc.hasOwnProperty('a') || !doc.hasOwnProperty('b');
+          return (
+            doc._id[0] === '_' ||
+            !doc.hasOwnProperty('a') ||
+            !doc.hasOwnProperty('b')
+          );
         };
         api.migrated = function (doc) {
           return doc.split;

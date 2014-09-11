@@ -16,7 +16,7 @@ test('retry migration until successful', function (t) {
     var tmpworker = createWorker(function (config) {
       var api = {};
       api.ignored = function (doc) {
-        return doc.ignored;
+        return doc._id[0] === '_' || doc.ignored;
       };
       api.migrated = function (doc) {
         return doc.migrated;
@@ -70,7 +70,7 @@ test('retry migration until run out of attempts', function (t) {
     var tmpworker = createWorker(function (config) {
       var api = {};
       api.ignored = function (doc) {
-        return doc.ignored;
+        return doc._id[0] === '_' || doc.ignored;
       };
       api.migrated = function (doc) {
         return doc.migrated;

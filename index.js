@@ -135,8 +135,10 @@ exports.ensureDesignDoc = function (config, worker) {
     else {
       // check if ddoc is up to date
       delete x._rev;
-      if (JSON.stringify(x) !== JSON.stringify(ddoc)) {
-        next(couchr.put(ddoc_url, ddoc));
+      if (JSON.stringify(x.body) !== JSON.stringify(ddoc)) {
+        var newddoc = exports.cloneJSON(ddoc);
+        newddoc._rev = x.body._rev;
+        next(couchr.put(ddoc_url, newddoc));
       }
       else {
         // all done, end the stream
@@ -419,27 +421,6 @@ exports.getCheckpoint = function (config) {
         }
       });
   });
-};
-
-/**
- * Returns a stream of migration events filtered to exclude ignored and
- * already-migrated docs for the worker.
- */
-
-exports.getDirty = function (worker, changes) {
-  return changes
-    .reject(function (change) {
-      return worker.ignored(change.doc);
-    })
-    .reject(function (change) {
-      return worker.migrated(change.doc);
-    })
-    .map(function (change) {
-      return {
-        original: change.doc,
-        seq: change.seq
-      };
-    });
 };
 
 /**

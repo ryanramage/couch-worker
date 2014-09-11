@@ -13,7 +13,7 @@ test('migrate function must return current doc', function (t) {
     var tmpworker = createWorker(function (config) {
         var api = {};
         api.ignored = function (doc) {
-          return false;
+          return doc._id[0] === '_';
         };
         api.migrated = function (doc) {
           return doc.migrated;
@@ -58,7 +58,7 @@ test('migrate result must match migrated predicate', function (t) {
     var tmpworker = createWorker(function (config) {
         var api = {};
         api.ignored = function (doc) {
-          return false;
+          return doc._id[0] === '_';
         };
         api.migrated = function (doc) {
           return doc.migrated;
@@ -104,7 +104,7 @@ test('migrate result can be ignored (instead of matching migrated predicate)', f
     var tmpworker = createWorker(function (config) {
         var api = {};
         api.ignored = function (doc) {
-          return doc.ignored;
+          return doc._id[0] === '_' || doc.ignored;
         };
         api.migrated = function (doc) {
           return doc.migrated;
@@ -137,6 +137,6 @@ test('migrate result can be ignored (instead of matching migrated predicate)', f
             t.end();
           });
         });
-      }, 2000);
+      }, 3000);
     });
 });

@@ -14,7 +14,7 @@ test('skip change events for docs with in-progress migrations', function (t) {
   var tmpworker = createWorker(function (config) {
     var api = {};
     api.ignored = function (doc) {
-      return false;
+      return doc._id[0] === '_';
     };
     api.migrated = function (doc) {
       return doc.migrated;
@@ -25,7 +25,7 @@ test('skip change events for docs with in-progress migrations', function (t) {
         delete doc._rev;
         doc.migrated = true;
         return callback(null, doc);
-      }, 1000);
+      }, 500);
     };
     return api;
   });
@@ -50,6 +50,6 @@ test('skip change events for docs with in-progress migrations', function (t) {
         worker.stop();
         t.end();
       });
-    }, 3000);
+    }, 8000);
   });
 });

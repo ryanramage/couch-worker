@@ -26,7 +26,7 @@ test('resume changes processing from last processed seq id', function (t) {
   var tmpworker = createWorker(function (config) {
     var api = {};
     api.ignored = function (doc) {
-      return false;
+      return doc._id[0] === '_';
     };
     api.migrated = function (doc) {
       return predicate(doc);
