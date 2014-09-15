@@ -48,6 +48,8 @@ exports.start = _.curry(function (worker, config) {
       }
       // store checkpoint in config for use when putting batches
       config.checkpoint_rev = checkpoint._rev;
+      // reset checkpoint counter
+      config.checkpoint_counter = 0;
 
       // start listening to changes feed
       var changes = exports.listen(checkpoint.seq, config);
@@ -65,7 +67,8 @@ exports.start = _.curry(function (worker, config) {
 
       // write updates to couchdb
       var writes = updated
-        .flatMap(exports.writeBatch(config))
+        .map(exports.writeBatch(config))
+        .parallel(config.concurrency)
         .doto(exports.removeInProgress(config));
 
       // output results
@@ -499,16 +502,36 @@ exports.writeBatch = _.curry(function (config, migration) {
     if (config.checkpoint_rev) {
       checkpoint._rev = config.checkpoint_rev;
     }
-    var docs = migration.writes.concat([checkpoint]);
-    var batch = couchr.post(config.database + '/_bulk_docs', {
-        all_or_nothing: true, // write conflicts to db
-        docs: docs
-    });
+    var docs = migration.writes;
+    if (config.checkpoint_counter >= config.checkpoint_size) {
+      config.checkpoint_counter = 0;
+      docs = docs.concat([checkpoint]);
+    }
+    else {
+      config.checkpoint_counter++;
+    }
+    if (docs.length) {
+      var batch = couchr.post(config.database + '/_bulk_docs', {
+          all_or_nothing: true, // write conflicts to db
+          docs: docs
+      });
+    }
+    else {
+      // nothing to write
+      return _([migration]);
+    }
     // return original migration on success
     return batch.map(function (res) {
       migration.response = res.body;
       // checkpoint is last doc we sent
-      config.checkpoint_rev = res.body[res.body.length - 1].rev;
+      var checkpoint = res.body[res.body.length - 1];
+      // this may conflict if we have high concurrency, but we
+      // don't really care so long as some checkpoints get through,
+      // _local docs don't keep around conflicting revisions anyway
+      if (checkpoint.ok) {
+        config.checkpoint_rev = res.body[res.body.length - 1].rev;
+        exports.logCheckpoint(config, migration.seq);
+      }
       return migration;
     });
 });
@@ -529,6 +552,8 @@ exports.readConfig = function (config) {
     }
     // default to processing 4 docs at once
     config.concurrency = config.concurrency || 4;
+    // default to checkpointing every 100 docs
+    config.checkpoint_size = config.checkpoint_size || 100;
     return config;
 };
 
@@ -566,6 +591,14 @@ exports.logMigrating = _.curry(function (config, migration) {
 });
 
 /**
+ * Logs a successful write of seq id to _local doc for worker
+ */
+
+exports.logCheckpoint = _.curry(function (config, seq) {
+  console.log('[' + config.name + '] Checkpoint ' + seq);
+});
+
+/**
  * Outputs errors to console
  */
 
@@ -581,7 +614,13 @@ exports.logBatch = _.curry(function (config, migration) {
     var writes = migration.writes.map(function (doc) {
         return doc._id + (doc._rev ? ' rev:' + doc._rev: '');
     });
-    console.log('[' + config.name + '] Written:\n  ' + writes.join('\n  '));
+    if (writes.length) {
+      console.log(
+        '[' + config.name + '] Written:' +
+        (writes.length > 1 ? '\n  ': '') +
+        writes.join('\n  ')
+      );
+    }
 });
 
 /**
