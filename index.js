@@ -48,11 +48,15 @@ exports.start = _.curry(function (worker, config) {
       }
       // store checkpoint in config for use when putting batches
       config.checkpoint_rev = checkpoint._rev;
-      // reset checkpoint counter
+      // reset checkpoint counter, when this hits checkpoint_size we send
+      // a new _local doc in the write batch with the current seq id
       config.checkpoint_counter = 0;
 
       // start listening to changes feed
       var changes = exports.listen(checkpoint.seq, config);
+
+      // announce worker has started
+      exports.logStart(config, checkpoint.seq);
 
       // update worker stop() function to stop changes feed
       api.stop = function (cb) {
@@ -580,6 +584,14 @@ exports.loadWorker = function (worker, config) {
 };
 
 /**
+ * Announce worker has started and is listening for changes
+ */
+
+exports.logStart = _.curry(function (config, seq) {
+  console.log('[' + config.name + '] Started from change ' + seq);
+});
+
+/**
  * Outputs log info for documents about to be migrated
  */
 
@@ -616,7 +628,7 @@ exports.logBatch = _.curry(function (config, migration) {
     });
     if (writes.length) {
       console.log(
-        '[' + config.name + '] Written:' +
+        '[' + config.name + '] Written: ' +
         (writes.length > 1 ? '\n  ': '') +
         writes.join('\n  ')
       );
