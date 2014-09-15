@@ -36,7 +36,9 @@ test('migrate function must return current doc', function (t) {
           include_docs: true
         };
         couchr.get(config.log_database + '/_all_docs', q).apply(function (res) {
-          var rows = res.body.rows;
+          var rows = res.body.rows.filter(function (x) {
+            return x.doc.type === 'error';
+          });
           t.equal(rows.length, 1);
           t.equal(rows[0].doc.error.message,
             'Migrate function did not return original document'
@@ -82,8 +84,10 @@ test('migrate result must match migrated predicate', function (t) {
           include_docs: true
         };
         couchr.get(config.log_database + '/_all_docs', q).apply(function (res) {
-          var rows = res.body.rows;
-          t.equal(rows.length, 1);
+          var rows = res.body.rows.filter(function (x) {
+            return x.doc.type === 'error';
+          });
+          t.equal(rows.length, 1, 'one error log');
           t.equal(rows[0].doc.error.message,
             'Migrate result did not match migrated or ignored predicates'
           );
@@ -129,7 +133,9 @@ test('migrate result can be ignored (instead of matching migrated predicate)', f
           include_docs: true
         };
         couchr.get(config.log_database + '/_all_docs', q).apply(function (res) {
-          var rows = res.body.rows;
+          var rows = res.body.rows.filter(function (x) {
+            return x.doc.type === 'error';
+          });
           t.equal(rows.length, 0, 'no errors logged');
           couchr.get(config.database + '/testdoc', {}).apply(function (res) {
             t.equal(res.body.ignored, true, 'doc was successfully updated');

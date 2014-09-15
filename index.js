@@ -1,5 +1,6 @@
 var couchr = require('highland-couchr');
 var moment = require('moment');
+var url = require('url');
 var os = require('os');
 var _ = require('highland');
 
@@ -87,9 +88,31 @@ exports.start = _.curry(function (worker, config) {
 exports.prepareDBs = function (config, worker) {
   return _([
     exports.ensureLogDB(config.log_database),
-    exports.ensureDesignDoc(config, worker)
+    exports.ensureDesignDoc(config, worker),
+    exports.writeStartupDoc(config)
   ])
-  .parallel(2);
+  .series();
+};
+
+/**
+ * Removes auth info from a URL
+ */
+
+exports.removeAuth = function (location) {
+  var parsed = url.parse(location);
+  delete parsed.auth;
+  delete parsed.href;
+  return url.format(parsed);
+};
+
+exports.writeStartupDoc = function (config) {
+  var doc = {
+    type: 'started',
+    name: config.name,
+    database: exports.removeAuth(config.database),
+    time: moment().toISOString()
+  };
+  return couchr.post(config.log_database, doc);
 };
 
 /**
@@ -329,6 +352,7 @@ exports.getSourceDoc = function (migration, result) {
 
 exports.writeErrorLog = function (config, err, migration) {
   var logdoc = {
+    type: 'error',
     worker: {
       name: config.name,
       hostname: os.hostname(),
@@ -339,7 +363,7 @@ exports.writeErrorLog = function (config, err, migration) {
     },
     error: exports.errorToJSON(err),
     time: moment().toISOString(),
-    database: config.database,
+    database: exports.removeAuth(config.database),
     seq: migration.seq,
     doc: migration.original
   };

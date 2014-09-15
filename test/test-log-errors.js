@@ -76,8 +76,11 @@ test('log errors to separate db', function (t) {
       var q = {include_docs: true};
       couchr.get(logurl, q).apply(function (res) {
         var rows = res.body.rows;
-        t.equal(rows.length, 1);
-        var logdoc = rows[0].doc;
+        t.equal(rows.length, 2);
+        var logrow = rows.filter(function (x) {
+          return x.doc.type === 'error';
+        })[0];
+        var logdoc = logrow.doc;
         delete logdoc._rev;
         delete logdoc._id;
         t.ok(logdoc.time, 'log doc has time property');
@@ -88,6 +91,7 @@ test('log errors to separate db', function (t) {
         // delete time from doc for easier comparison
         delete logdoc.time;
         t.deepEqual(logdoc, {
+          type: 'error',
           worker: {
             name: 'couch-worker-example',
             hostname: 'fakehostname',
@@ -100,7 +104,7 @@ test('log errors to separate db', function (t) {
             ]
           },
           //time: '2009-02-13T23:31:30.123Z',
-          database: test.COUCH_URL + '/example',
+          database: test.COUCH_URL_NO_AUTH + '/example',
           seq: 1,
           error: {
             message: 'Fail!',

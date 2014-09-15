@@ -47,7 +47,9 @@ test('retry migration until successful', function (t) {
           t.equal(res.body.migrated, true, 'doc updated successfully');
           var logurl = test.COUCH_URL + '/errors/_all_docs';
           couchr.get(logurl, {include_docs: true}).apply(function (res) {
-            var rows = res.body.rows;
+            var rows = res.body.rows.filter(function (x) {
+              return x.doc.type === 'error';
+            });
             t.equal(rows.length, 0, 'no errors logged');
             w.stop();
             t.end();
@@ -95,7 +97,9 @@ test('retry migration until run out of attempts', function (t) {
           t.equal(res.body.migrated, undefined, 'doc not updated');
           var logurl = test.COUCH_URL + '/errors/_all_docs';
           couchr.get(logurl, {include_docs: true}).apply(function (res) {
-            var rows = res.body.rows;
+            var rows = res.body.rows.filter(function (x) {
+              return x.doc.type === 'error';
+            });
             t.equal(rows.length, 1, 'one error logged');
             t.equal(
               rows[0].doc.error.message,
