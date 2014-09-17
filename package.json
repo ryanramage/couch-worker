@@ -3,8 +3,8 @@
   "descriptions": "Shared code for managing couchdb workers",
   "version": "1.3.0",
   "dependencies": {
-    "highland": "^1.27.1",
-    "highland-couchr": "^1.3.2",
+    "highland": "^1.29.0",
+    "highland-couchr": "^1.4.0",
     "moment": "^2.8.2"
   },
   "devDependencies": {
