@@ -4,7 +4,7 @@
   "version": "1.4.0",
   "dependencies": {
     "highland": "^1.29.0",
-    "highland-couchr": "^1.4.0",
+    "highland-couchr": "^1.5.0",
     "moment": "^2.8.2"
   },
   "devDependencies": {
