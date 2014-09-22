@@ -376,6 +376,7 @@ exports.writeErrorLog = function (config, err, migration) {
     doc: migration.original
   };
   console.error(
+    '[' + config.name + '] ' +
     'ERROR: ' + logdoc.error.message +
     '\n  for document: ' + logdoc.doc._id + ' rev:' + logdoc.doc._rev
   );
