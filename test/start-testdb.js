@@ -9,7 +9,7 @@ var couchr = require('highland-couchr');
 
 var COUCH_PORT = 5989;
 var COUCH_URL = 'http://localhost:' + COUCH_PORT;
-var COUCH_DIR = __dirname + '/testdb';
+var COUCH_DIR = __dirname + '/../node_modules/couch-worker-test-harness/testdb';
 
 var couch = new MultiCouch({
     prefix: COUCH_DIR,
