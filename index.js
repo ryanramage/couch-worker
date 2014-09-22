@@ -460,6 +460,52 @@ exports.getCheckpoint = function (config) {
  */
 
 exports.listen = function (since, config) {
+  var priority = exports.getPriority(config);
+  var changes = exports.getChanges(since, config);
+  var s = _([priority, changes]).merge();
+  s.stop = function (callback) {
+    changes.stop(function () {
+      priority.stop(callback);
+    });
+  };
+  return s;
+};
+
+exports.getPriority = function (config) {
+  var opts = {
+    include_docs: true,
+    since: 0
+  };
+  // TODO: use a ddoc with filter
+  var changes = couchr.changes(config.log_database, opts);
+  var s = changes.filter(function (change) {
+      return (
+        change.doc.type === 'priority' &&
+        change.doc.worker === config.name
+      );
+    })
+    .flatMap(function (change) {
+      return couchr.get(config.database + '/' + change.doc.id, {
+        local_seq: true,
+        conflicts: true
+      });
+    })
+    .pluck('body')
+    .map(function (doc) {
+      // fake a change object
+      return {
+        FAKE: true,
+        id: doc._id,
+        seq: doc._local_seq,
+        changes: [{rev: doc._rev}],
+        doc: doc
+      };
+    });
+  s.stop = changes.stop;
+  return s;
+};
+
+exports.getChanges = function (since, config) {
   var opts = config.follow || {};
   opts.include_docs = true;
   opts.conflicts = true;
@@ -497,6 +543,7 @@ exports.cloneJSON = function (doc) {
  */
 
 exports.writeBatch = _.curry(function (config, migration) {
+    var batch;
     var result = migration.result;
     migration.writes = Array.isArray(result) ? result : [result];
     var checkpoint = {
@@ -515,7 +562,7 @@ exports.writeBatch = _.curry(function (config, migration) {
       config.checkpoint_counter++;
     }
     if (docs.length) {
-      var batch = couchr.post(config.database + '/_bulk_docs', {
+      batch = couchr.post(config.database + '/_bulk_docs', {
           all_or_nothing: true, // write conflicts to db
           docs: docs
       });

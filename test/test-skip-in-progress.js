@@ -20,12 +20,12 @@ test('skip change events for docs with in-progress migrations', function (t) {
       return doc.migrated;
     };
     api.migrate = function (doc, callback) {
+      migrate_calls.push(doc._rev);
       setTimeout(function () {
-        migrate_calls.push(doc._rev);
-        delete doc._rev;
+        //delete doc._rev;
         doc.migrated = true;
         return callback(null, doc);
-      }, 500);
+      }, 2000);
     };
     return api;
   });
@@ -39,17 +39,22 @@ test('skip change events for docs with in-progress migrations', function (t) {
     doc.asdf = 'asdf';
     doc._rev = res.body.rev;
     setTimeout(function () {
-      couchr.get(url, {conflicts: true}).apply(function (res) {
-        var newdoc = res.body;
-        t.equal(newdoc._rev.substr(0, 2), '1-', '_rev should only be one');
-        t.equal(
-          newdoc._conflicts && newdoc._conflicts.length, 1,
-          'there should be 1 conflict'
-        );
-        t.equal(migrate_calls.length, 2, 'two calls to migrate function');
-        worker.stop();
-        t.end();
+      couchr.put(url, doc).apply(function (res) {
+        setTimeout(function () {
+          couchr.get(url, {conflicts: true}).apply(function (res) {
+            var newdoc = res.body;
+            t.ok(!newdoc.asdf, 'asdf not set');
+            t.equal(newdoc._rev.substr(0, 2), '2-', '_rev should only be two');
+            t.equal(
+              newdoc._conflicts && newdoc._conflicts.length, 1,
+              'there should be 1 conflict'
+            );
+            t.equal(migrate_calls.length, 1, 'one call to migrate function');
+            worker.stop();
+            t.end();
+          });
+        }, 6000);
       });
-    }, 8000);
+    }, 500);
   });
 });

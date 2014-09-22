@@ -10,7 +10,9 @@ test('resume changes processing from last processed seq id', function (t) {
   var config = {
     name: 'couch-worker-example',
     database: test.COUCH_URL + '/example',
-    log_database: test.COUCH_URL + '/errors'
+    log_database: test.COUCH_URL + '/errors',
+    checkpoint_size: 1,
+    concurrency: 1
   };
 
   // extracted here so we can modify after creating a worker
