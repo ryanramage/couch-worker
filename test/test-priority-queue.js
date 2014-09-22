@@ -5,6 +5,8 @@ var _ = require('highland');
 
 
 test('process docs from priority queue', function (t) {
+  t.plan(5);
+
   var config = {
     name: 'couch-worker-example',
     database: test.COUCH_URL + '/example',
@@ -45,11 +47,13 @@ test('process docs from priority queue', function (t) {
     .toArray(function (responses) {
       // add 'd' and 'f' to priority queue
       var pdoc1 = {
+        _id: 'pdoc1',
         type: 'priority',
         worker: 'couch-worker-example',
         id: 'd'
       };
       var pdoc2 = {
+        _id: 'pdoc2',
         type: 'priority',
         worker: 'couch-worker-example',
         id: 'f'
@@ -66,13 +70,29 @@ test('process docs from priority queue', function (t) {
           setTimeout(function () {
             t.deepEqual(migrate_calls, ['a','b','d','c']);
             setTimeout(function () {
-              t.deepEqual(migrate_calls, ['a','b','d','c','f','d','e','f']);
-              w.stop();
-              t.end();
-            }, 4000);
-          }, 2000);
+              t.deepEqual(migrate_calls.slice(0,5), ['a','b','d','c','f']);
+              // make sure priority queue docs are cleaned up
+              _([
+                couchr.get(test.COUCH_URL + '/errors/' + pdoc1._id, {}),
+                couchr.get(test.COUCH_URL + '/errors/' + pdoc2._id, {})
+              ])
+              .series()
+              .errors(function (err) {
+                // NOTE: this should be called twice, once for each doc
+                // see the t.plan() call at the top of this test
+                t.equal(
+                  err.error, 'not_found',
+                  'priority doc should not be found'
+                );
+              })
+              .apply(function () {
+                w.stop();
+                t.end();
+              })
+            }, 4500);
+          }, 2500);
         });
-      }, 1000);
+      }, 1500);
     });
 
 });

@@ -71,8 +71,8 @@ exports.start = _.curry(function (worker, config) {
 
       // write updates to couchdb
       var writes = updated
-        .map(exports.writeBatch(config))
-        .parallel(config.concurrency)
+        .map(exports.writeBatch(config)).parallel(config.concurrency)
+        .map(exports.clearPriority(config)).parallel(config.concurrency)
         .doto(exports.removeInProgress(config));
 
       // output results
@@ -217,6 +217,7 @@ exports.process = function (worker, config, changes) {
   // create a stream of migration events
   var migrations = changes.map(function (change) {
     return {
+      priority: change.priority || null,
       original: change.doc,
       seq: change.seq
     };
@@ -488,18 +489,17 @@ exports.getPriority = function (config) {
       return couchr.get(config.database + '/' + change.doc.id, {
         local_seq: true,
         conflicts: true
+      })
+      .map(function (res) {
+        var doc = res.body;
+        return {
+          priority: change.doc,       // priority doc
+          id: doc._id,                // id of target doc
+          seq: doc._local_seq,        // seq of target doc in target db
+          doc: doc,                   // target doc
+          changes: [{rev: doc._rev}]
+        };
       });
-    })
-    .pluck('body')
-    .map(function (doc) {
-      // fake a change object
-      return {
-        FAKE: true,
-        id: doc._id,
-        seq: doc._local_seq,
-        changes: [{rev: doc._rev}],
-        doc: doc
-      };
     });
   s.stop = changes.stop;
   return s;
@@ -585,6 +585,17 @@ exports.writeBatch = _.curry(function (config, migration) {
       }
       return migration;
     });
+});
+
+exports.clearPriority = _.curry(function (config, migration) {
+  if (!migration.priority) {
+    // nothing to do
+    return _([migration]);
+  }
+  var url = config.log_database + '/' + migration.priority._id;
+  return couchr.del(url, {rev: migration.priority._rev}).map(function (res) {
+    return migration;
+  });
 });
 
 /**
