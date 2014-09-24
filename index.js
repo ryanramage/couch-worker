@@ -132,17 +132,23 @@ exports.ensureDesignDoc = function (config, worker) {
     _id: '_design/worker:' + config.name,
     language: 'javascript',
     views: {
+      ignored: {
+        map: 'function (doc) {\n' +
+          'if ((' + worker.ignored.toString() + '(doc))) emit(doc._id, 1);' +
+          '}',
+        reduce: '_count'
+      },
       not_migrated: {
         map: 'function (doc) {\n' +
           'if (!(' + worker.ignored.toString() + '(doc)) && \n' +
-            '!(' + worker.migrated.toString() + '(doc))) emit(null, 1);' +
+            '!(' + worker.migrated.toString() + '(doc))) emit(doc._id, 1);' +
           '}',
         reduce: '_count'
       },
       migrated: {
         map: 'function (doc) {\n' +
           'if (!(' + worker.ignored.toString() + '(doc)) && \n' +
-            '(' + worker.migrated.toString() + '(doc))) emit(null, 1);' +
+            '(' + worker.migrated.toString() + '(doc))) emit(doc._id, 1);' +
           '}',
         reduce: '_count'
       }
@@ -164,10 +170,11 @@ exports.ensureDesignDoc = function (config, worker) {
     }
     else {
       // check if ddoc is up to date
-      delete x._rev;
+      var _rev = x.body._rev;
+      delete x.body._rev
       if (JSON.stringify(x.body) !== JSON.stringify(ddoc)) {
         var newddoc = exports.cloneJSON(ddoc);
-        newddoc._rev = x.body._rev;
+        newddoc._rev = _rev;
         next(couchr.put(ddoc_url, newddoc));
       }
       else {
