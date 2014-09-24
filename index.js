@@ -171,7 +171,7 @@ exports.ensureDesignDoc = function (config, worker) {
     else {
       // check if ddoc is up to date
       var _rev = x.body._rev;
-      delete x.body._rev
+      delete x.body._rev;
       if (JSON.stringify(x.body) !== JSON.stringify(ddoc)) {
         var newddoc = exports.cloneJSON(ddoc);
         newddoc._rev = _rev;
@@ -601,7 +601,8 @@ exports.clearPriority = _.curry(function (config, migration) {
     return _([migration]);
   }
   var url = config.log_database + '/' + migration.priority._id;
-  return couchr.del(url, {rev: migration.priority._rev}).map(function (res) {
+  migration.priority._deleted = true;
+  return couchr.put(url, migration.priority).map(function (res) {
     return migration;
   });
 });

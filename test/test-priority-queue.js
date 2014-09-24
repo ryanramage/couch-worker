@@ -50,12 +50,14 @@ test('process docs from priority queue', function (t) {
         _id: 'pdoc1',
         type: 'priority',
         worker: 'couch-worker-example',
+        database: test.COUCH_URL + '/example',
         id: 'd'
       };
       var pdoc2 = {
         _id: 'pdoc2',
         type: 'priority',
         worker: 'couch-worker-example',
+        database: test.COUCH_URL + '/example',
         id: 'f'
       };
       var w = tmpworker.start(config);
