@@ -552,6 +552,7 @@ exports.cloneJSON = function (doc) {
 
 exports.writeBatch = _.curry(function (config, migration) {
     var batch;
+    var posted_checkpoint = false;
     var result = migration.result;
     migration.writes = Array.isArray(result) ? result : [result];
     var checkpoint = {
@@ -565,6 +566,7 @@ exports.writeBatch = _.curry(function (config, migration) {
     if (config.checkpoint_counter >= config.checkpoint_size) {
       config.checkpoint_counter = 0;
       docs = docs.concat([checkpoint]);
+      posted_checkpoint = true;
     }
     else {
       config.checkpoint_counter++;
@@ -582,14 +584,16 @@ exports.writeBatch = _.curry(function (config, migration) {
     // return original migration on success
     return batch.map(function (res) {
       migration.response = res.body;
-      // checkpoint is last doc we sent
-      var checkpoint = res.body[res.body.length - 1];
-      // this may conflict if we have high concurrency, but we
-      // don't really care so long as some checkpoints get through,
-      // _local docs don't keep around conflicting revisions anyway
-      if (checkpoint.ok) {
-        config.checkpoint_rev = res.body[res.body.length - 1].rev;
-        exports.logCheckpoint(config, migration.seq);
+      if (posted_checkpoint) {
+        // checkpoint is last doc we sent
+        var checkpoint = res.body[res.body.length - 1];
+        // this may conflict if we have high concurrency, but we
+        // don't really care so long as some checkpoints get through,
+        // _local docs don't keep around conflicting revisions anyway
+        if (checkpoint.ok) {
+          config.checkpoint_rev = res.body[res.body.length - 1].rev;
+          exports.logCheckpoint(config, migration.seq);
+        }
       }
       return migration;
     });
