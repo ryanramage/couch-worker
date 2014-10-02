@@ -3,7 +3,7 @@
   "descriptions": "Shared code for managing couchdb workers",
   "version": "1.5.2",
   "dependencies": {
-    "highland": "^1.29.0",
+    "highland": "^2.0.0",
     "highland-couchr": "^1.5.0",
     "moment": "^2.8.2"
   },
