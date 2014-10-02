@@ -560,11 +560,15 @@ exports.writeBatch = _.curry(function (config, migration) {
       checkpoint._rev = config.checkpoint_rev;
     }
     var docs = migration.writes;
-    config.checkpoint_counter++;
-    if (config.checkpoint_counter >= config.checkpoint_size) {
-      config.checkpoint_counter = 0;
-      docs = docs.concat([checkpoint]);
-      posted_checkpoint = true;
+    // don't checkpoint priority migrations
+    // (as they may jump ahead in sequence ids)
+    if (!migration.priority) {
+      config.checkpoint_counter++;
+      if (config.checkpoint_counter >= config.checkpoint_size) {
+        config.checkpoint_counter = 0;
+        docs = docs.concat([checkpoint]);
+        posted_checkpoint = true;
+      }
     }
     if (docs.length) {
       batch = couchr.post(config.database + '/_bulk_docs', {
