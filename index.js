@@ -322,12 +322,9 @@ exports.retry = function (f, attempts, interval) {
       if (err) {
         if (attempts > 1) {
           // try again
-          exports.retry(f, attempts - 1, interval)
-            .apply(null, args)
-            .pull(function (err, x) {
-              push(err, x);
-              push(null, _.nil);
-            });
+          return next(
+            exports.retry(f, attempts - 1, interval).apply(null, args)
+          );
         }
         else {
           push(err);
