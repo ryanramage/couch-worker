@@ -3,14 +3,17 @@ var couchr = require('highland-couchr');
 var test = require('couch-worker-test-harness');
 
 
-test('log timeout errors', function (t) {
+test('eventual results from timed out calls are discarded', function (t) {
   var config = {
     name: 'couch-worker-example',
     database: test.COUCH_URL + '/example',
     log_database: test.COUCH_URL + '/errors',
+    retry_attempts: 3,
+    retry_interval: 2000,
     timeout: 1000
   };
 
+  var migrate_calls = 0;
   var tmpworker = createWorker(function (config) {
     var api = {};
     api.ignored = function (doc) {
@@ -20,10 +23,16 @@ test('log timeout errors', function (t) {
       return doc.migrated;
     };
     api.migrate = function (doc, callback) {
-      doc.migrated = true;
-      setTimeout(function () {
+      migrate_calls++;
+      doc.migrated = migrate_calls;
+      if (migrate_calls === 3) {
         return callback(null, doc);
-      }, 2000);
+      }
+      else {
+        setTimeout(function () {
+          return callback(null, doc);
+        }, 1500);
+      }
     };
     return api;
   });
@@ -37,18 +46,18 @@ test('log timeout errors', function (t) {
       var q = {include_docs: true};
       couchr.get(logurl, q).apply(function (res) {
         var rows = res.body.rows;
-        t.equal(rows.length, 2);
-        var logrow = rows.filter(function (x) {
+        // no errors logged
+        var errors = rows.filter(function (x) {
           return x.doc.type === 'error';
-        })[0];
-        var logdoc = logrow.doc;
-        delete logdoc._rev;
-        delete logdoc._id;
-        t.ok(/timed out/i.test(logdoc.error.message), 'timeout error logged');
-        w.stop();
-        t.end();
+        });
+        t.equal(errors.length, 0);
+        couchr.get(test.COUCH_URL + '/example/a', {}).apply(function (res) {
+          t.equal(res.body.migrated, 3, 'third call is successful');
+          w.stop();
+          t.end();
+        });
       });
-    }, 2000);
+    }, 4000);
   });
 
 });

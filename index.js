@@ -217,7 +217,6 @@ exports.timeout = function (f, timeout) {
     return _(function (push, next) {
       var t = setTimeout(function () {
         timed_out = true;
-        console.error('Timeout!');
         push(new Error('Timed out (' + timeout + 'ms)'));
         push(null, _.nil);
       });
@@ -226,7 +225,7 @@ exports.timeout = function (f, timeout) {
           // do nothing with the result
           return
         }
-        cancelTimeout(t);
+        clearTimeout(t);
         push(err, x);
         next(s);
       });
