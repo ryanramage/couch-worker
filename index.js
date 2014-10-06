@@ -210,6 +210,7 @@ exports.ensureLogDB = function (url) {
   });
 };
 
+
 /**
  * Process a changes stream returning a stream of update arrays
  */
@@ -315,6 +316,12 @@ exports.process = function (worker, config, changes) {
   });
 };
 
+exports.delayStart = function (src, delay) {
+  return _(function (push, next) {
+    setTimeout(next.bind(null, src), delay);
+  });
+};
+
 exports.retry = function (f, attempts, interval) {
   return function () {
     var args = Array.prototype.slice.call(arguments);
@@ -323,7 +330,10 @@ exports.retry = function (f, attempts, interval) {
         if (attempts > 1) {
           // try again
           return next(
-            exports.retry(f, attempts - 1, interval).apply(null, args)
+            exports.delayStart(
+              exports.retry(f, attempts - 1, interval).apply(null, args),
+              interval
+            )
           );
         }
         else {
