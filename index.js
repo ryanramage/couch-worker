@@ -210,6 +210,29 @@ exports.ensureLogDB = function (url) {
   });
 };
 
+exports.timeout = function (f, timeout) {
+  return function () {
+    var s = f.apply(this, arguments);
+    var timed_out = false;
+    return _(function (push, next) {
+      var t = setTimeout(function () {
+        timed_out = true;
+        push(new Error('Timed out (' + timeout + 'ms)'));
+        push(null, _.nil);
+      });
+      s.pull(function (err, x) {
+        if (timed_out) {
+          // do nothing with the result
+          return
+        }
+        clearTimeout(t);
+        push(err, x);
+        next(s);
+      });
+    });
+  };
+};
+
 /**
  * Process a changes stream returning a stream of update arrays
  */
@@ -217,6 +240,9 @@ exports.ensureLogDB = function (url) {
 exports.process = function (worker, config, changes) {
   // force migrate function to return a stream
   var f = _.wrapCallback(worker.migrate);
+  if (config.timeout) {
+    f = exports.timeout(f, config.timeout);
+  }
   if (config.retry_attempts) {
     f = exports.retry(f, config.retry_attempts, config.retry_interval);
   }
