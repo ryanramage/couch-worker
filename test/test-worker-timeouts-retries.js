@@ -57,7 +57,7 @@ test('eventual results from timed out calls are discarded', function (t) {
           t.end();
         });
       });
-    }, 4000);
+    }, 8000);
   });
 
 });
