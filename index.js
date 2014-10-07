@@ -250,7 +250,7 @@ exports.process = function (worker, config, changes) {
   }
 
   // create a stream of migration events
-  var migrations = changes.map(function (change) {
+  var migrations = changes.compact().map(function (change) {
     return {
       priority: change.priority || null,
       original: change.doc,
@@ -524,7 +524,8 @@ exports.getPriority = function (config) {
   var s = changes.filter(function (change) {
       return (
         change.doc.type === 'priority' &&
-        change.doc.worker === config.name
+        change.doc.worker === config.name &&
+        !change.doc._deleted
       );
     })
     .flatMap(function (change) {
