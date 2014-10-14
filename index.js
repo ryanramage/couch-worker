@@ -213,24 +213,23 @@ exports.ensureLogDB = function (url) {
 
 exports.timeout = function (f, timeout) {
   return function () {
-    var s = f.apply(this, arguments);
+    var args = Array.prototype.slice.call(arguments);
+    var cb = args.pop();
     var timed_out = false;
-    return _(function (push, next) {
-      var t = setTimeout(function () {
-        timed_out = true;
-        push(new Error('Timed out (' + timeout + 'ms)'));
-        push(null, _.nil);
-      });
-      s.pull(function (err, x) {
-        if (timed_out) {
-          // do nothing with the result
-          return;
-        }
-        clearTimeout(t);
-        push(err, x);
-        next(s);
-      });
-    });
+    var t = setTimeout(function () {
+      timed_out = true;
+      return cb(
+        new Error('Timed out (' + timeout + 'ms)')
+      );
+    }, timeout);
+    return f.apply(this, args.concat([function () {
+      if (timed_out) {
+        // do nothing with the result
+        return;
+      }
+      clearTimeout(t);
+      return cb.apply(this, arguments);
+    }]));
   };
 };
 
@@ -241,10 +240,12 @@ exports.timeout = function (f, timeout) {
 
 exports.process = function (worker, config, changes) {
   // force migrate function to return a stream
-  var f = _.wrapCallback(worker.migrate);
+  var f = worker.migrate;
   if (config.timeout) {
     f = exports.timeout(f, config.timeout);
   }
+  // return a stream from migrate function
+  f = _.wrapCallback(f);
   if (config.retry_attempts) {
     f = exports.retry(f, config.retry_attempts, config.retry_interval);
   }
