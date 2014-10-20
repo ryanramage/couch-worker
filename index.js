@@ -1,5 +1,6 @@
 var couchr = require('highland-couchr');
 var moment = require('moment');
+var crypto = require('crypto');
 var url = require('url');
 var os = require('os');
 var _ = require('highland');
@@ -233,6 +234,24 @@ exports.timeout = function (f, timeout) {
   };
 };
 
+/**
+ * Returns a hex digest for the md5 hash of a string
+ */
+
+exports.hash = function (str) {
+  return crypto.createHash('md5').update(str).digest('hex');
+};
+
+/**
+ * Checks if an id falls into a bucket start/end range
+ */
+
+exports.inBucket = function (bucket, id) {
+  var hash = exports.hash(id);
+  return (bucket.start ? hash >= bucket.start : true) &&
+         (bucket.end ? hash < bucket.end : true);
+};
+
 
 /**
  * Process a changes stream returning a stream of update arrays
@@ -259,6 +278,8 @@ exports.process = function (worker, config, changes) {
     };
   });
 
+  var bucket = config.bucket;
+
   // keep a list of in-progress migrations so we can avoid
   // migrating multiple revisions of the same document in parallel
   config.inprogress = [];
@@ -266,7 +287,12 @@ exports.process = function (worker, config, changes) {
   // return a stream of updates (emits an empty array if nothing to do
   // for this doc) an array of doc updates otherwise
   return migrations.map(function (migration) {
-    if (worker.ignored(migration.original)) {
+    if (bucket && !exports.inBucket(bucket, migration.original._id)) {
+      // doc is not in the workers bucket, do nothing but update checkpoint
+      migration.result = [];
+      return _([migration]);
+    }
+    else if (worker.ignored(migration.original)) {
       // doc ignored, do nothing but update checkpoint
       migration.result = [];
       return _([migration]);
