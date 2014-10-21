@@ -79,11 +79,11 @@ Your worker can use additional configuration properties as required (for
 API keys etc), but all workers using `couch-worker` have the following
 options available.
 
-* __name__ - *String* - The unique name for this worker instance
-* __database__ - *String* - The database URL (with credentials) to migrate
-  documents in
-* __log\_database__ - *String* - The database URL (with credentials) to store
-  worker-related data (error logs, priority queues etc)
+* __name__ (required) - *String* - The unique name for this worker instance
+* __database__ (required) *String* - The database URL (with credentials) to
+  migrate documents in
+* __log\_database__ (required) - *String* - The database URL (with credentials)
+  to store worker-related data (error logs, priority queues etc)
 * __concurrency__ - *Number* - Maximum number of documents to process in
   parallel
 * __timeout__ - *Number* Time to wait in milliseconds for `migrate()` calls to
