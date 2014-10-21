@@ -123,6 +123,10 @@ exports.writeStartupDoc = function (config) {
   return couchr.post(config.log_database, doc);
 };
 
+exports.ddocId = function (config) {
+  return '_design/worker:' + config.name;
+};
+
 /**
  * Make sure there's an up-to-date design doc in place for monitoring
  * progress of the worker
@@ -130,7 +134,7 @@ exports.writeStartupDoc = function (config) {
 
 exports.ensureDesignDoc = function (config, worker) {
   var ddoc = {
-    _id: '_design/worker:' + config.name,
+    _id: exports.ddocId(config),
     language: 'javascript',
     views: {
       ignored: {
@@ -577,6 +581,9 @@ exports.getPriority = function (config) {
 
 exports.getChanges = function (since, config) {
   var opts = config.follow || {};
+  var ddoc_name = exports.ddocId(config).replace(/^_design\//, '');
+  opts.view = encodeURIComponent(ddoc_name) + '/not_migrated';
+  opts.filter = '_view';
   opts.include_docs = true;
   opts.conflicts = true;
   opts.since = since;
