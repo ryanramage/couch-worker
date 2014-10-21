@@ -58,10 +58,19 @@ test('resume changes processing from last processed seq id', function (t) {
 
   var url = test.COUCH_URL + '/example';
 
+  var delay = function () {
+    return _(function (push, next) {
+      setTimeout(function () { push(null, _.nil); }, 1000);
+    });
+  };
+
   var tasksA = _([
     couchr.post(url, {_id: 'a'}),
+    delay(),
     couchr.post(url, {_id: 'b'}),
-    couchr.post(url, {_id: 'c'})
+    delay(),
+    couchr.post(url, {_id: 'c'}),
+    delay()
   ]);
 
   var tasksB = _([
@@ -82,9 +91,12 @@ test('resume changes processing from last processed seq id', function (t) {
           // resume listening to changes
           var w2 = tmpworker2.start(config);
           setTimeout(function () {
-            // check we didn't repeat 'migrated' checks for a,b,c
+            // check we didn't repeat 'migrated' checks for a and b,
+            // c will be repeated since it's updated seq id will have been
+            // filtered out of changes feed for this worker
+            // (since it's already migrated)
             t.deepEqual(
-              migrate_calls, ['a','b','c','d','e','f'],
+              migrate_calls, ['a','b','c','c','d','e','f'],
               'no migrations repeated'
             );
             w2.stop();
