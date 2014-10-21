@@ -36,11 +36,21 @@ This should be a predicate which returns true if the document is ignored by
 the worker, false otherwise. You might want to restrict the worker to
 operating on a specific document type, and exclude design docs for example.
 
+**Important:** This function must be self-contained and not use surrounding
+scope so that it's suitable for converting to a string and sending to
+couchdb. That means no node-specific code or referencing things outside
+of the function body.
+
 ### migrated(doc)
 
 This should be a predicate which returns true if the doc has already been
 migrated, false otherwise. All documents returned from the `migrate()`
 function **must** pass this predicate.
+
+**Important:** This function must be self-contained and not use surrounding
+scope so that it's suitable for converting to a string and sending to
+couchdb. That means no node-specific code or referencing things outside
+of the function body.
 
 ### migrate(doc, callback)
 
@@ -49,6 +59,9 @@ required to update the document then passes the updated document back to
 the callback. You can return multiple documents in an array if you like,
 but you **must** return the original document as one of them (modified so
 that it passes the `migrated()`predicate).
+
+This function will always be called from Node.js, so you can use
+surrounding scope in the module and require other Node modules.
 
 
 ## Starting a worker
