@@ -156,12 +156,6 @@ exports.ensureDesignDoc = function (config, worker) {
           '}',
         reduce: '_count'
       }
-    },
-    filters: {
-      not_migrated: 'function (doc, req) {' +
-        'return (!(' + worker.ignored.toString() + '(doc)) && \n' +
-                '!(' + worker.migrated.toString() + '(doc)));' +
-      '}'
     }
   };
   var ddoc_url = config.database + '/' + ddoc._id;
@@ -562,7 +556,8 @@ exports.getPriority = function (config) {
 exports.getChanges = function (since, config) {
   var opts = config.follow || {};
   var ddoc_name = exports.ddocId(config).replace(/^_design\//, '');
-  opts.filter = encodeURIComponent(ddoc_name) + '/not_migrated';
+  opts.view = encodeURIComponent(ddoc_name) + '/not_migrated';
+  opts.filter = '_view';
   opts.include_docs = true;
   opts.conflicts = true;
   opts.since = since;
