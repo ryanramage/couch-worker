@@ -74,6 +74,7 @@ exports.start = _.curry(function (worker, config) {
       var writes = updated
         .map(exports.writeBatch(config)).parallel(config.concurrency)
         .map(exports.clearPriority(config)).parallel(config.concurrency)
+        .map(exports.logSuccess(config)).parallel(config.concurrency)
         .doto(exports.removeInProgress(config));
 
       // output results
@@ -294,21 +295,25 @@ exports.process = function (worker, config, changes) {
     if (bucket && !exports.inBucket(bucket, migration.original._id)) {
       // doc is not in the workers bucket, do nothing but update checkpoint
       migration.result = [];
+      migration.success = false;
       return _([migration]);
     }
     else if (worker.ignored(migration.original)) {
       // doc ignored, do nothing but update checkpoint
       migration.result = [];
+      migration.success = false;
       return _([migration]);
     }
     else if (worker.migrated(migration.original)) {
       // doc already migrated, do nothing but update checkpoint
       migration.result = [];
+      migration.success = false;
       return _([migration]);
     }
     else if (exports.inProgress(config, migration)) {
       // doc already being migrated (due to earlier change event), skip seq id
       migration.result = [];
+      migration.success = false;
       return _([migration]);
     }
     else {
@@ -325,6 +330,7 @@ exports.process = function (worker, config, changes) {
               // write checkpoint back to source db so we can continue
               // processing changes
               migration.result = [];
+              migration.success = false;
               return migration;
             })
           );
@@ -346,6 +352,7 @@ exports.process = function (worker, config, changes) {
                 // write checkpoint back to source db so we can continue
                 // processing changes
                 migration.result = [];
+                migration.success = false;
                 return migration;
               })
             );
@@ -360,11 +367,13 @@ exports.process = function (worker, config, changes) {
                 // write checkpoint back to source db so we can continue
                 // processing changes
                 migration.result = [];
+                migration.success = false;
                 return migration;
               })
             );
           }
           else {
+            x.success = true;
             push(null, x);
             next();
           }
@@ -678,6 +687,24 @@ exports.clearPriority = _.curry(function (config, migration) {
   var url = config.log_database + '/' + migration.priority._id;
   migration.priority._deleted = true;
   return couchr.put(url, migration.priority).map(function (res) {
+    return migration;
+  });
+});
+
+exports.logSuccess = _.curry(function (config, migration) {
+  if (!migration.success) {
+    // nothing to do
+    return _([migration]);
+  }
+  var doc = {
+    type: 'success',
+    seq: migration.seq,
+    worker: config.name,
+    database: exports.removeAuth(config.database),
+    docid: migration.original._id,
+    time: moment().toISOString()
+  };
+  return couchr.post(config.log_database, doc).map(function (res) {
     return migration;
   });
 });
