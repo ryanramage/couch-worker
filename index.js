@@ -29,6 +29,12 @@ exports.makeWorker = function (path, config) {
   });
   */
   sub.send({type: 'init', data: config});
+  sub.on('message', function (msg) {
+    var cb = callbacks[msg.id]
+    delete callbacks[msg.id];
+    cb(msg.error, msg.result);
+  });
+  var callbacks = {};
   return {
     stop: function (callback) {
       console.log('Killing child process');
@@ -40,22 +46,19 @@ exports.makeWorker = function (path, config) {
       sub.kill();
     },
     ignored: function (doc, callback) {
-      sub.send({type: 'ignored', data: doc});
-      sub.once('message', function (msg) {
-        callback(msg.error, msg.result);
-      });
+      var id = 'ignored:' + doc._id;
+      callbacks[id] = callback;
+      sub.send({id: id, type: 'ignored', data: doc});
     },
     migrated: function (doc, callback) {
-      sub.send({type: 'migrated', data: doc});
-      sub.once('message', function (msg) {
-        callback(msg.error, msg.result);
-      });
+      var id = 'migrated:' + doc._id;
+      callbacks[id] = callback;
+      sub.send({id: id, type: 'migrated', data: doc});
     },
     migrate: function (doc, callback) {
-      sub.send({type: 'migrate', data: doc});
-      sub.once('message', function (msg) {
-        callback(msg.error, msg.result);
-      });
+      var id = 'migrate:' + doc._id;
+      callbacks[id] = callback;
+      sub.send({id: id, type: 'migrate', data: doc});
     }
   };
 };

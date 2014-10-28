@@ -22,14 +22,14 @@ process.on('message', function (msg) {
     required('migrate', 'function');
   }
   else if (msg.type === 'ignored') {
-    process.send({result: worker.ignored(msg.data)});
+    process.send({id: msg.id, result: worker.ignored(msg.data)});
   }
   else if (msg.type === 'migrated') {
-    process.send({result: worker.migrated(msg.data)});
+    process.send({id: msg.id, result: worker.migrated(msg.data)});
   }
   else if (msg.type === 'migrate') {
     worker.migrate(msg.data, function (err, result) {
-      process.send({error: err, result: result});
+      process.send({id: msg.id, error: err, result: result});
     });
   }
 });

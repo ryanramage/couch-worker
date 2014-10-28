@@ -15,25 +15,7 @@ test('process only docs in workers bucket range', function (t) {
     }
   };
 
-  var tmpworker = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return (
-        doc._id[0] === '_' ||
-        !doc.hasOwnProperty('a') ||
-        !doc.hasOwnProperty('b')
-      );
-    };
-    api.migrated = function (doc) {
-      return doc.hasOwnProperty('total');
-    };
-    api.migrate = function (doc, callback) {
-      doc.total = doc.a + doc.b;
-      return callback(null, doc);
-    };
-    return api;
-  });
-
+  var tmpworker = createWorker(__dirname + '/test-buckets-worker.js');
   var w = tmpworker.start(config);
 
   var doc1 = {a: 1, b: 2};
