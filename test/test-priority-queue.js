@@ -2,6 +2,7 @@ var createWorker = require('../index').createWorker;
 var couchr = require('highland-couchr');
 var test = require('couch-worker-test-harness');
 var _ = require('highland');
+var fs = require('fs');
 
 
 test('process docs from priority queue', function (t) {
@@ -11,27 +12,11 @@ test('process docs from priority queue', function (t) {
     name: 'couch-worker-example',
     database: test.COUCH_URL + '/example',
     log_database: test.COUCH_URL + '/errors',
-    concurrency: 2
+    concurrency: 2,
+    tmpfile: __dirname + '/test-priority-queue.tmp'
   };
 
-  var migrate_calls = [];
-  var tmpworker = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return doc._id[0] === '_';
-    };
-    api.migrated = function (doc) {
-      return doc.migrated;
-    };
-    api.migrate = function (doc, callback) {
-      migrate_calls.push(doc._id);
-      doc.migrated = true;
-      setTimeout(function () {
-        return callback(null, doc);
-      }, 2000);
-    };
-    return api;
-  });
+  var tmpworker = createWorker(__dirname + '/test-priority-queue-worker.js');
 
   var docs = _([
     {_id: 'a'},
@@ -41,6 +26,14 @@ test('process docs from priority queue', function (t) {
     {_id: 'e'},
     {_id: 'f'}
   ]);
+
+  var getMigrateCalls = function () {
+    // should have just started processing priority doc
+    var migrate_calls = fs.readFileSync(config.tmpfile).toString().split('\n');
+    // remove last newline
+    migrate_calls.pop();
+    return migrate_calls;
+  };
 
   // post all docs to couchdb
   docs.map(couchr.post(test.COUCH_URL + '/example')).series()
@@ -67,12 +60,12 @@ test('process docs from priority queue', function (t) {
           couchr.post(test.COUCH_URL + '/errors', pdoc1),
           couchr.post(test.COUCH_URL + '/errors', pdoc2)
         ]);
-        t.deepEqual(migrate_calls, ['a','b']);
+        t.deepEqual(getMigrateCalls(), ['a','b']);
         posts.series().apply(function (res1, res2) {
           setTimeout(function () {
-            t.deepEqual(migrate_calls, ['a','b','d','c']);
+            t.deepEqual(getMigrateCalls(), ['a','b','d','c']);
             setTimeout(function () {
-              t.deepEqual(migrate_calls.slice(0,5), ['a','b','d','c','f']);
+              t.deepEqual(getMigrateCalls().slice(0,5), ['a','b','d','c','f']);
               // make sure priority queue docs are cleaned up
               _([
                 couchr.get(test.COUCH_URL + '/errors/' + pdoc1._id, {}),

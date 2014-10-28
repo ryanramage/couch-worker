@@ -2,6 +2,7 @@ var createWorker = require('../index').createWorker;
 var couchr = require('highland-couchr');
 var test = require('couch-worker-test-harness');
 var _ = require('highland');
+var fs = require('fs');
 
 
 test('resume changes processing from last processed seq id', function (t) {
@@ -12,7 +13,8 @@ test('resume changes processing from last processed seq id', function (t) {
     database: test.COUCH_URL + '/example',
     log_database: test.COUCH_URL + '/errors',
     checkpoint_size: 1,
-    concurrency: 1
+    concurrency: 1,
+    tmpfile: __dirname + '/test-resume-processing.tmp'
   };
 
   // extracted here so we can modify after creating a worker
@@ -24,37 +26,14 @@ test('resume changes processing from last processed seq id', function (t) {
   //  return doc;
   //};
 
-  var migrate_calls = [];
-  var tmpworker = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return doc._id[0] === '_';
-    };
-    api.migrated = function (doc) {
-      return doc.migrated;
-    };
-    api.migrate = function (doc, callback) {
-      migrate_calls.push(doc._id);
-      doc.migrated = true;
-      return callback(null, doc);
-    };
-    return api;
-  });
-  var tmpworker2 = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return doc._id[0] === '_';
-    };
-    api.migrated = function (doc) {
-      return doc.migrated2;
-    };
-    api.migrate = function (doc, callback) {
-      migrate_calls.push(doc._id);
-      doc.migrated2 = true;
-      return callback(null, doc);
-    };
-    return api;
-  });
+  var tmpworker = createWorker(__dirname + '/test-resume-processing-worker1.js');
+  var tmpworker2 = createWorker(__dirname + '/test-resume-processing-worker2.js');
+
+  var getMigrateCalls = function () {
+    var calls = fs.readFileSync(config.tmpfile).toString().split('\n');
+    calls.pop();
+    return calls;
+  };
 
   var url = test.COUCH_URL + '/example';
 
@@ -83,7 +62,7 @@ test('resume changes processing from last processed seq id', function (t) {
 
   tasksA.series().apply(function (a, b, c) {
     setTimeout(function () {
-      t.deepEqual(migrate_calls, ['a','b','c']);
+      t.deepEqual(getMigrateCalls(), ['a','b','c']);
       // stop listening to changes
       w.stop(function () {
         // add some more docs
@@ -96,7 +75,7 @@ test('resume changes processing from last processed seq id', function (t) {
             // filtered out of changes feed for this worker
             // (since it's already migrated)
             t.deepEqual(
-              migrate_calls, ['a','b','c','c','d','e','f'],
+              getMigrateCalls(), ['a','b','c','c','d','e','f'],
               'no migrations repeated'
             );
             w2.stop();

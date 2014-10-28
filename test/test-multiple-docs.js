@@ -11,29 +11,7 @@ test('return multiple docs from worker', function (t) {
       log_database: test.COUCH_URL + '/errors'
     };
 
-    var tmpworker = createWorker(function (config) {
-        var api = {};
-        api.ignored = function (doc) {
-          return (
-            doc._id[0] === '_' ||
-            !doc.hasOwnProperty('a') ||
-            !doc.hasOwnProperty('b')
-          );
-        };
-        api.migrated = function (doc) {
-          return doc.split;
-        };
-        api.migrate = function (doc, callback) {
-          doc.split = true;
-          return callback(null, [
-            {_id: 'a', a: doc.a},
-            {_id: 'b', b: doc.b},
-            doc
-          ]);
-        };
-        return api;
-    });
-
+    var tmpworker = createWorker(__dirname + '/test-multiple-docs-worker.js');
     var w = tmpworker.start(config);
 
     var notmigrated_doc = require('./fixtures/notmigrated.json').doc;

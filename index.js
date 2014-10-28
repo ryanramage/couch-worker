@@ -306,28 +306,22 @@ exports.inBucket = function (bucket, id) {
          (bucket.end ? hash < bucket.end : true);
 };
 
-exports.addStatus = function (worker, migration, doc) {
-  return _([migration])
+exports.addStatus = function (worker, migrations) {
+  return migrations
     .flatMap(function (migration) {
-      return _.wrapCallback(worker.ignored)(doc)
+      return _.wrapCallback(worker.ignored)(migration.original)
         .map(function (result) {
           migration.ignored = result;
           return migration;
         });
     })
     .flatMap(function (migration) {
-      return _.wrapCallback(worker.migrated)(doc)
+      return _.wrapCallback(worker.migrated)(migration.original)
         .map(function (result) {
           migration.migrated = result;
           return migration;
         });
     });
-};
-
-exports.addStatuses = function (worker, migrations) {
-  return migrations.flatMap(function (migration) {
-    return exports.addStatus(worker, migration, migration.original)
-  });
 };
 
 /**
@@ -362,7 +356,7 @@ exports.process = function (worker, config, changes) {
 
   // return a stream of updates (emits an empty array if nothing to do
   // for this doc) an array of doc updates otherwise
-  return exports.addStatuses(worker, migrations).map(function (migration) {
+  return exports.addStatus(worker, migrations).map(function (migration) {
     if (bucket && !exports.inBucket(bucket, migration.original._id)) {
       // doc is not in the workers bucket, do nothing but update checkpoint
       migration.result = [];
@@ -411,48 +405,9 @@ exports.process = function (worker, config, changes) {
           push(null, _.nil);
         }
         else {
-          var source_doc = exports.getSourceDoc(migration, x.result);
-          // check if we got the original document back
-          if (!source_doc) {
-            var e = new Error(
-              'Migrate function did not return original document'
-            );
-            return next(
-              // write to log database
-              exports.writeErrorLog(config, e, migration).map(function (res) {
-                // write checkpoint back to source db so we can continue
-                // processing changes
-                migration.result = [];
-                migration.success = false;
-                return migration;
-              })
-            );
-          }
-          else {
-            // re-check migrated/ignored status of result
-            exports.addStatus(worker, migration, source_doc).apply(function (migration) {
-              if (!migration.migrated && !migration.ignored) {
-                var e2 = new Error(
-                  'Migrate result did not match migrated or ignored predicates'
-                );
-                return next(
-                  // write to log database
-                  exports.writeErrorLog(config, e2, migration).map(function (res) {
-                    // write checkpoint back to source db so we can continue
-                    // processing changes
-                    migration.result = [];
-                    migration.success = false;
-                    return migration;
-                  })
-                );
-              }
-              else {
-                x.success = true;
-                push(null, x);
-                next();
-              }
-            });
-          }
+          x.success = true;
+          push(null, x);
+          next();
         }
       });
     }
@@ -493,21 +448,6 @@ exports.retry = function (f, attempts, interval) {
       }
     });
   };
-};
-
-/**
- * Looks for the original document in the results of the migrate function
- * call, and returns it. Returns null if not found.
- */
-
-exports.getSourceDoc = function (migration, result) {
-  var r = (Array.isArray(result) ? result: [result]);
-  for (var i = 0; i < r.length; i++) {
-    if (r[i]._id === migration.original._id) {
-      return r[i];
-    }
-  }
-  return null;
 };
 
 /**

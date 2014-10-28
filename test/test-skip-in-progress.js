@@ -1,34 +1,24 @@
 var createWorker = require('../index').createWorker;
 var couchr = require('highland-couchr');
 var test = require('couch-worker-test-harness');
+var fs = require('fs');
+
 
 test('skip change events for docs with in-progress migrations', function (t) {
   var config = {
     name: 'couch-worker-example',
     database: test.COUCH_URL + '/example',
     log_database: test.COUCH_URL + '/errors',
-    concurrency: 5
+    concurrency: 5,
+    tmpfile: __dirname + '/test-skip-in-progress.tmp'
   };
 
-  var migrate_calls = [];
-  var tmpworker = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return doc._id[0] === '_';
-    };
-    api.migrated = function (doc) {
-      return doc.migrated;
-    };
-    api.migrate = function (doc, callback) {
-      migrate_calls.push(doc._rev);
-      setTimeout(function () {
-        //delete doc._rev;
-        doc.migrated = true;
-        return callback(null, doc);
-      }, 2000);
-    };
-    return api;
-  });
+  var tmpworker = createWorker(__dirname + '/test-skip-in-progress-worker.js');
+  var getMigrateCalls = function () {
+    var lines = fs.readFileSync(config.tmpfile).toString().split('\n');
+    lines.pop();
+    return lines;
+  };
 
   var worker = tmpworker.start(config);
   var doc = {_id: 'testdoc', foo: 'bar'};
@@ -49,7 +39,7 @@ test('skip change events for docs with in-progress migrations', function (t) {
               newdoc._conflicts && newdoc._conflicts.length, 1,
               'there should be 1 conflict'
             );
-            t.equal(migrate_calls.length, 1, 'one call to migrate function');
+            t.equal(getMigrateCalls().length, 1, 'one call to migrate function');
             worker.stop();
             t.end();
           });

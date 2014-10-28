@@ -10,20 +10,7 @@ test('log errors to separate db', function (t) {
     log_database: test.COUCH_URL + '/errors'
   };
 
-  var tmpworker = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return doc._id[0] === '_';
-    };
-    api.migrated = function (doc) {
-      return doc.migrated;
-    };
-    api.migrate = function (doc, callback) {
-      doc.migrated = true;
-      return callback(null, doc);
-    };
-    return api;
-  });
+  var tmpworker = createWorker(__dirname + '/test-log-processed-worker.js');
 
   var w = tmpworker.start(config);
   var doc = {_id: 'a'};
