@@ -9,27 +9,7 @@ test('enable conflicts when writing documents back to couchdb', function (t) {
     log_database: test.COUCH_URL + '/errors'
   };
 
-  var tmpworker = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return (
-        doc._id[0] === '_' ||
-        !doc.hasOwnProperty('a') ||
-        !doc.hasOwnProperty('b')
-      );
-    };
-    api.migrated = function (doc) {
-      return doc.hasOwnProperty('total');
-    };
-    api.migrate = function (doc, callback) {
-      setTimeout(function () {
-        doc.total = doc.a + doc.b;
-        return callback(null, doc);
-      }, 2000);
-    };
-    return api;
-  });
-
+  var tmpworker = createWorker(__dirname + '/test-enable-conflicts-worker.js');
   var w = tmpworker.start(config);
 
   var migrated_doc = require('./fixtures/migrated.json').doc;

@@ -29,7 +29,14 @@ process.on('message', function (msg) {
   }
   else if (msg.type === 'migrate') {
     worker.migrate(msg.data, function (err, result) {
-      process.send({id: msg.id, error: err, result: result});
+      var e = null;
+      if (err) {
+        var e = JSON.parse(JSON.stringify(err));
+        // useful properties not serialized by json.stringify:
+        e.message = err.message;
+        e.stack = err.stack;
+      }
+      process.send({id: msg.id, error: e, result: result});
     });
   }
 });
