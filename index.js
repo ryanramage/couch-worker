@@ -1,3 +1,4 @@
+var child_process = require('child_process');
 var couchr = require('highland-couchr');
 var moment = require('moment');
 var crypto = require('crypto');
@@ -13,15 +14,57 @@ var _ = require('highland');
  * properties as functions.
  */
 
-exports.createWorker = function (worker) {
-    return {start: exports.start(worker)};
+exports.createWorker = function (path) {
+    return {start: exports.start(path)};
+};
+
+exports.makeWorker = function (path, config) {
+  //var cb;
+  var sub = child_process.fork(__dirname + '/subprocess.js', [path]);
+  /*
+  sub.on('close', function (code) {
+      console.log('child process exited with code ' + code);
+      if (cb) {
+      }
+  });
+  */
+  sub.send({type: 'init', data: config});
+  return {
+    stop: function (callback) {
+      console.log('Killing child process');
+      if (callback) {
+        sub.once('close', function (code) {
+          callback();
+        });
+      }
+      sub.kill();
+    },
+    ignored: function (doc, callback) {
+      sub.send({type: 'ignored', data: doc});
+      sub.once('message', function (msg) {
+        callback(msg.error, msg.result);
+      });
+    },
+    migrated: function (doc, callback) {
+      sub.send({type: 'migrated', data: doc});
+      sub.once('message', function (msg) {
+        callback(msg.error, msg.result);
+      });
+    },
+    migrate: function (doc, callback) {
+      sub.send({type: 'migrate', data: doc});
+      sub.once('message', function (msg) {
+        callback(msg.error, msg.result);
+      });
+    }
+  };
 };
 
 /**
  * Load worker and start listening to CouchDB changes.
  */
 
-exports.start = _.curry(function (worker, config) {
+exports.start = _.curry(function (path, config) {
   // worker api
   var api = {
     stopped: false,
@@ -36,10 +79,10 @@ exports.start = _.curry(function (worker, config) {
   config = exports.readConfig(config);
 
   // initialize worker
-  var w = exports.loadWorker(worker, config);
+  var w = exports.makeWorker(path, config);
 
   // make sure the log database exists and push design doc to target db
-  exports.prepareDBs(config, w).apply(function () {
+  exports.prepareDBs(config, path).apply(function () {
 
     // get the checkpoint document from couchdb
     exports.getCheckpoint(config).apply(function (checkpoint) {
@@ -62,7 +105,9 @@ exports.start = _.curry(function (worker, config) {
       // update worker stop() function to stop changes feed
       api.stop = function (cb) {
         api.stopped = true;
-        changes.stop(cb);
+        changes.stop(function () {
+          w.stop(cb);
+        });
       };
 
       // create a stream of migration events for docs that are not ignored
@@ -94,10 +139,10 @@ exports.start = _.curry(function (worker, config) {
  * design documents
  */
 
-exports.prepareDBs = function (config, worker) {
+exports.prepareDBs = function (config, path) {
   return _([
     exports.ensureLogDB(config.log_database),
-    exports.ensureDesignDoc(config, worker),
+    exports.ensureDesignDoc(config, path),
     exports.writeStartupDoc(config)
   ])
   .series();
@@ -133,7 +178,8 @@ exports.ddocId = function (config) {
  * progress of the worker
  */
 
-exports.ensureDesignDoc = function (config, worker) {
+exports.ensureDesignDoc = function (config, path) {
+  var worker = require(path)(config);
   var ddoc = {
     _id: exports.ddocId(config),
     language: 'javascript',
@@ -257,13 +303,35 @@ exports.inBucket = function (bucket, id) {
          (bucket.end ? hash < bucket.end : true);
 };
 
+exports.addStatus = function (worker, migration, doc) {
+  return _([migration])
+    .flatMap(function (migration) {
+      return _.wrapCallback(worker.ignored)(doc)
+        .map(function (result) {
+          migration.ignored = result;
+          return migration;
+        });
+    })
+    .flatMap(function (migration) {
+      return _.wrapCallback(worker.migrated)(doc)
+        .map(function (result) {
+          migration.migrated = result;
+          return migration;
+        });
+    });
+};
+
+exports.addStatuses = function (worker, migrations) {
+  return migrations.flatMap(function (migration) {
+    return exports.addStatus(worker, migration, migration.original)
+  });
+};
 
 /**
  * Process a changes stream returning a stream of update arrays
  */
 
 exports.process = function (worker, config, changes) {
-  // force migrate function to return a stream
   var f = worker.migrate;
   if (config.timeout) {
     f = exports.timeout(f, config.timeout);
@@ -291,20 +359,20 @@ exports.process = function (worker, config, changes) {
 
   // return a stream of updates (emits an empty array if nothing to do
   // for this doc) an array of doc updates otherwise
-  return migrations.map(function (migration) {
+  return exports.addStatuses(worker, migrations).map(function (migration) {
     if (bucket && !exports.inBucket(bucket, migration.original._id)) {
       // doc is not in the workers bucket, do nothing but update checkpoint
       migration.result = [];
       migration.success = false;
       return _([migration]);
     }
-    else if (worker.ignored(migration.original)) {
+    else if (migration.ignored) {
       // doc ignored, do nothing but update checkpoint
       migration.result = [];
       migration.success = false;
       return _([migration]);
     }
-    else if (worker.migrated(migration.original)) {
+    else if (migration.migrated) {
       // doc already migrated, do nothing but update checkpoint
       migration.result = [];
       migration.success = false;
@@ -357,25 +425,30 @@ exports.process = function (worker, config, changes) {
               })
             );
           }
-          else if (!worker.migrated(source_doc) && !worker.ignored(source_doc)) {
-            var e2 = new Error(
-              'Migrate result did not match migrated or ignored predicates'
-            );
-            return next(
-              // write to log database
-              exports.writeErrorLog(config, e2, migration).map(function (res) {
-                // write checkpoint back to source db so we can continue
-                // processing changes
-                migration.result = [];
-                migration.success = false;
-                return migration;
-              })
-            );
-          }
           else {
-            x.success = true;
-            push(null, x);
-            next();
+            // re-check migrated/ignored status of result
+            exports.addStatus(worker, migration, source_doc).apply(function (migration) {
+              if (!migration.migrated && !migration.ignored) {
+                var e2 = new Error(
+                  'Migrate result did not match migrated or ignored predicates'
+                );
+                return next(
+                  // write to log database
+                  exports.writeErrorLog(config, e2, migration).map(function (res) {
+                    // write checkpoint back to source db so we can continue
+                    // processing changes
+                    migration.result = [];
+                    migration.success = false;
+                    return migration;
+                  })
+                );
+              }
+              else {
+                x.success = true;
+                push(null, x);
+                next();
+              }
+            });
           }
         }
       });
@@ -728,28 +801,6 @@ exports.readConfig = function (config) {
     // default to checkpointing every 100 docs
     config.checkpoint_size = config.checkpoint_size || 100;
     return config;
-};
-
-/**
- * Initializes worker and checks that it exports the required properties
- */
-
-exports.loadWorker = function (worker, config) {
-    if (typeof worker !== 'function') {
-        throw new Error('Worker should expose a function as module.exports');
-    }
-    var w = worker(config);
-    function required(prop, type) {
-        if (!w[prop] || typeof w[prop] !== type) {
-            throw new Error(
-                'Worker should expose "' + prop + '" property as ' + type
-            );
-        }
-    }
-    required('ignored', 'function');
-    required('migrated', 'function');
-    required('migrate', 'function');
-    return w;
 };
 
 /**
