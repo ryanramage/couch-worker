@@ -10,7 +10,7 @@ test('log errors to separate db', function (t) {
     log_database: test.COUCH_URL + '/errors'
   };
 
-  var tmpworker = createWorker(__dirname + '/test-log-processed-worker.js');
+  var tmpworker = createWorker(__dirname + '/log-processed-worker.js');
 
   var w = tmpworker.start(config);
   var doc = {_id: 'a'};

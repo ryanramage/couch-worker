@@ -11,10 +11,10 @@ test('retry migration until successful', function (t) {
       log_database: test.COUCH_URL + '/errors',
       retry_attempts: 3,
       retry_interval: 500,
-      tmpfile: __dirname + '/test-retry-migration-success.tmp'
+      tmpfile: __dirname + '/retry-migration-success.tmp'
     };
 
-    var tmpworker = createWorker(__dirname + '/test-retry-migration-success-worker.js');
+    var tmpworker = createWorker(__dirname + '/retry-migration-success-worker.js');
 
     var getAttempts = function () {
       return Number(fs.readFileSync(config.tmpfile).toString());

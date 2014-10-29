@@ -9,14 +9,14 @@ test('include _conflicts in documents provided to workers', function (t) {
   // worker variable populated later, defined here for use inside api.migrate
   var worker;
   var conflictworker = createWorker(
-    __dirname + '/test-provide-conflicts-worker.js'
+    __dirname + '/provide-conflicts-worker.js'
   );
 
   var config = {
     name: 'couch-worker-example',
     database: test.COUCH_URL + '/example',
     log_database: test.COUCH_URL + '/errors',
-    tmpfile: __dirname + '/test-provide-conflicts.tmp'
+    tmpfile: __dirname + '/provide-conflicts.tmp'
   };
 
   var a = {_id: 'testdoc', a: 1};

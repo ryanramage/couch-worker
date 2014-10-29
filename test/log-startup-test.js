@@ -13,7 +13,7 @@ test('create log document on startup', function (t) {
   };
 
   var migrate_calls = [];
-  var tmpworker = createWorker(__dirname + '/test-log-startup-worker.js');
+  var tmpworker = createWorker(__dirname + '/log-startup-worker.js');
 
   var w = tmpworker.start(config);
   var url = config.log_database + '/_all_docs/';

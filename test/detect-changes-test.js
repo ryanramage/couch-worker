@@ -9,7 +9,7 @@ test('pick up non-migrated documents from couchdb', function (t) {
     log_database: test.COUCH_URL + '/errors'
   };
 
-  var tmpworker = createWorker(__dirname + '/test-detect-changes-worker.js');
+  var tmpworker = createWorker(__dirname + '/detect-changes-worker.js');
   var w = tmpworker.start(config);
 
   var migrated_doc = require('./fixtures/migrated.json').doc;

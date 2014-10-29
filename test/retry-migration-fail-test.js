@@ -11,11 +11,11 @@ test('retry migration until run out of attempts', function (t) {
       log_database: test.COUCH_URL + '/errors',
       retry_attempts: 3,
       retry_interval: 500,
-      tmpfile: __dirname + '/test-retry-migration-fail.tmp'
+      tmpfile: __dirname + '/retry-migration-fail.tmp'
     };
 
     var tmpworker = createWorker(
-      __dirname + '/test-retry-migration-fail-worker.js'
+      __dirname + '/retry-migration-fail-worker.js'
     );
 
     var getAttempts = function () {

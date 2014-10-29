@@ -13,7 +13,7 @@ test('send design doc for progress views', function (t) {
   };
 
   var migrate_calls = [];
-  var tmpworker = createWorker(__dirname + '/test-design-doc-worker.js');
+  var tmpworker = createWorker(__dirname + '/design-doc-worker.js');
 
   var w = tmpworker.start(config);
   var url = config.database + '/_design/' +

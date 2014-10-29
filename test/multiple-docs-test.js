@@ -11,7 +11,7 @@ test('return multiple docs from worker', function (t) {
       log_database: test.COUCH_URL + '/errors'
     };
 
-    var tmpworker = createWorker(__dirname + '/test-multiple-docs-worker.js');
+    var tmpworker = createWorker(__dirname + '/multiple-docs-worker.js');
     var w = tmpworker.start(config);
 
     var notmigrated_doc = require('./fixtures/notmigrated.json').doc;

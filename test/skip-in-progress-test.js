@@ -10,10 +10,10 @@ test('skip change events for docs with in-progress migrations', function (t) {
     database: test.COUCH_URL + '/example',
     log_database: test.COUCH_URL + '/errors',
     concurrency: 5,
-    tmpfile: __dirname + '/test-skip-in-progress.tmp'
+    tmpfile: __dirname + '/skip-in-progress.tmp'
   };
 
-  var tmpworker = createWorker(__dirname + '/test-skip-in-progress-worker.js');
+  var tmpworker = createWorker(__dirname + '/skip-in-progress-worker.js');
   var getMigrateCalls = function () {
     var lines = fs.readFileSync(config.tmpfile).toString().split('\n');
     lines.pop();

@@ -13,10 +13,10 @@ test('process docs from priority queue', function (t) {
     database: test.COUCH_URL + '/example',
     log_database: test.COUCH_URL + '/errors',
     concurrency: 2,
-    tmpfile: __dirname + '/test-priority-queue.tmp'
+    tmpfile: __dirname + '/priority-queue.tmp'
   };
 
-  var tmpworker = createWorker(__dirname + '/test-priority-queue-worker.js');
+  var tmpworker = createWorker(__dirname + '/priority-queue-worker.js');
 
   var docs = _([
     {_id: 'a'},

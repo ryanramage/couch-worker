@@ -15,7 +15,7 @@ test('process only docs in workers bucket range', function (t) {
     }
   };
 
-  var tmpworker = createWorker(__dirname + '/test-buckets-worker.js');
+  var tmpworker = createWorker(__dirname + '/buckets-worker.js');
   var w = tmpworker.start(config);
 
   var doc1 = {a: 1, b: 2};

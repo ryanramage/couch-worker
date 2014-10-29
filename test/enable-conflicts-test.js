@@ -9,7 +9,7 @@ test('enable conflicts when writing documents back to couchdb', function (t) {
     log_database: test.COUCH_URL + '/errors'
   };
 
-  var tmpworker = createWorker(__dirname + '/test-enable-conflicts-worker.js');
+  var tmpworker = createWorker(__dirname + '/enable-conflicts-worker.js');
   var w = tmpworker.start(config);
 
   var migrated_doc = require('./fixtures/migrated.json').doc;

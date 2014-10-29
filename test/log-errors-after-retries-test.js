@@ -1,16 +1,22 @@
 var createWorker = require('../index').createWorker;
 var couchr = require('highland-couchr');
 var test = require('couch-worker-test-harness');
+var fs = require('fs');
 
 
-test('log errors to separate db', function (t) {
+test('log errors to separate db after retrying', function (t) {
   var config = {
     name: 'couch-worker-example',
     database: test.COUCH_URL + '/example',
-    log_database: test.COUCH_URL + '/errors'
+    log_database: test.COUCH_URL + '/errors',
+    retry_attempts: 3,
+    retry_interval: 500,
+    tmpfile: __dirname + '/log-errors-after-retries.tmp'
   };
 
-  var tmpworker = createWorker(__dirname + '/test-log-errors-worker.js');
+  var tmpworker = createWorker(
+    __dirname + '/log-errors-after-retries-worker.js'
+  );
 
   var os = require('os');
   var _hostname = os.hostname;
@@ -71,6 +77,8 @@ test('log errors to separate db', function (t) {
         var timediff = Math.abs(
           new Date(logdoc.time).getTime() - new Date().getTime()
         );
+        var migrate_calls = Number(fs.readFileSync(config.tmpfile).toString());
+        t.equal(migrate_calls, 3);
         t.ok(timediff < 1000*60*60*24, 'error logged some time today');
         // delete time from doc for easier comparison
         delete logdoc.time;

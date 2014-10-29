@@ -12,11 +12,11 @@ test('docs from priority queue never cause a checkpoint', function (t) {
     log_database: test.COUCH_URL + '/errors',
     checkpoint_size: 1,
     concurrency: 1,
-    tmpfile: __dirname + '/test-priority-no-checkpoint.tmp'
+    tmpfile: __dirname + '/priority-no-checkpoint.tmp'
   };
 
   var tmpworker = createWorker(
-    __dirname + '/test-priority-no-checkpoint-worker.js'
+    __dirname + '/priority-no-checkpoint-worker.js'
   );
 
   var docs = _([

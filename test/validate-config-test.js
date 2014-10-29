@@ -4,7 +4,7 @@ var worker = require('../index');
 var test = require('tape');
 
 
-var tmpworker = createWorker(__dirname + '/test-validate-config-worker.js');
+var tmpworker = createWorker(__dirname + '/validate-config-worker.js');
 
 var config = {
   name: 'example-worker',

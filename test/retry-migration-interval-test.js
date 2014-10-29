@@ -14,11 +14,11 @@ test('retries happen sequentially with interval', function (t) {
     concurrency: 1,
     retry_attempts: 3,
     retry_interval: 500,
-    tmpfile: __dirname + '/test-retry-migration-interval.tmp'
+    tmpfile: __dirname + '/retry-migration-interval.tmp'
   };
 
   var tmpworker = createWorker(
-    __dirname + '/test-retry-migration-interval-worker.js'
+    __dirname + '/retry-migration-interval-worker.js'
   );
 
   var getAttempts = function () {

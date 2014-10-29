@@ -15,7 +15,7 @@
     "tape": "^2.14.0"
   },
   "scripts": {
-    "test": "./node_modules/.bin/jshint index.js && ./node_modules/.bin/tap --timeout 60 test/test-*.js"
+    "test": "./node_modules/.bin/jshint index.js && ./node_modules/.bin/tap --timeout 60 test/*-test.js"
   },
   "publishConfig": {
     "registry": "http://npm.rmcloud.com:8123"

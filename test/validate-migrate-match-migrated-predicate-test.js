@@ -3,7 +3,7 @@ var couchr = require('highland-couchr');
 var test = require('couch-worker-test-harness');
 
 
-test('migrate result can be ignored (instead of matching migrated predicate)', function (t) {
+test('migrate result must match migrated predicate', function (t) {
     var config = {
       name: 'couch-worker-example',
       database: test.COUCH_URL + '/example',
@@ -11,7 +11,7 @@ test('migrate result can be ignored (instead of matching migrated predicate)', f
     };
 
     var tmpworker = createWorker(
-      __dirname + '/test-validate-migrate-match-ignored-worker.js'
+      __dirname + '/validate-migrate-match-migrated-predicate-worker.js'
     );
 
     var w = tmpworker.start(config);
@@ -29,13 +29,13 @@ test('migrate result can be ignored (instead of matching migrated predicate)', f
           var rows = res.body.rows.filter(function (x) {
             return x.doc.type === 'error';
           });
-          t.equal(rows.length, 0, 'no errors logged');
-          couchr.get(config.database + '/testdoc', {}).apply(function (res) {
-            t.equal(res.body.ignored, true, 'doc was successfully updated');
-            w.stop();
-            t.end();
-          });
+          t.equal(rows.length, 1, 'one error log');
+          t.equal(rows[0].doc.error.message,
+            'Migrate result did not match migrated or ignored predicates'
+          );
+          w.stop();
+          t.end();
         });
-      }, 3000);
+      }, 4000);
     });
 });

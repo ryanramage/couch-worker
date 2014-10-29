@@ -14,7 +14,7 @@ test('resume changes processing from last processed seq id', function (t) {
     log_database: test.COUCH_URL + '/errors',
     checkpoint_size: 1,
     concurrency: 1,
-    tmpfile: __dirname + '/test-resume-processing.tmp'
+    tmpfile: __dirname + '/resume-processing.tmp'
   };
 
   // extracted here so we can modify after creating a worker
@@ -26,8 +26,8 @@ test('resume changes processing from last processed seq id', function (t) {
   //  return doc;
   //};
 
-  var tmpworker = createWorker(__dirname + '/test-resume-processing-worker1.js');
-  var tmpworker2 = createWorker(__dirname + '/test-resume-processing-worker2.js');
+  var tmpworker = createWorker(__dirname + '/resume-processing-worker1.js');
+  var tmpworker2 = createWorker(__dirname + '/resume-processing-worker2.js');
 
   var getMigrateCalls = function () {
     var calls = fs.readFileSync(config.tmpfile).toString().split('\n');

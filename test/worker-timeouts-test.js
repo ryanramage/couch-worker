@@ -3,18 +3,16 @@ var couchr = require('highland-couchr');
 var test = require('couch-worker-test-harness');
 
 
-test('eventual results from timed out calls are discarded', function (t) {
+test('log timeout errors', function (t) {
   var config = {
     name: 'couch-worker-example',
     database: test.COUCH_URL + '/example',
     log_database: test.COUCH_URL + '/errors',
-    retry_attempts: 3,
-    retry_interval: 2000,
     timeout: 1000
   };
 
   var tmpworker = createWorker(
-    __dirname + '/test-worker-timeouts-retries-worker.js'
+    __dirname + '/worker-timeouts-worker.js'
   );
 
   var w = tmpworker.start(config);
@@ -27,18 +25,18 @@ test('eventual results from timed out calls are discarded', function (t) {
       var q = {include_docs: true};
       couchr.get(logurl, q).apply(function (res) {
         var rows = res.body.rows;
-        // no errors logged
-        var errors = rows.filter(function (x) {
+        t.equal(rows.length, 2);
+        var logrow = rows.filter(function (x) {
           return x.doc.type === 'error';
-        });
-        t.equal(errors.length, 0);
-        couchr.get(test.COUCH_URL + '/example/a', {}).apply(function (res) {
-          t.equal(res.body.migrated, 3, 'third call is successful');
-          w.stop();
-          t.end();
-        });
+        })[0];
+        var logdoc = logrow.doc;
+        delete logdoc._rev;
+        delete logdoc._id;
+        t.ok(/timed out/i.test(logdoc.error.message), 'timeout error logged');
+        w.stop();
+        t.end();
       });
-    }, 8000);
+    }, 2000);
   });
 
 });
