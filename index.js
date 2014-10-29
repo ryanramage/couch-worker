@@ -1,3 +1,4 @@
+var child_process = require('child_process');
 var couchr = require('highland-couchr');
 var moment = require('moment');
 var crypto = require('crypto');
@@ -13,15 +14,79 @@ var _ = require('highland');
  * properties as functions.
  */
 
-exports.createWorker = function (worker) {
-    return {start: exports.start(worker)};
+exports.createWorker = function (path) {
+    return {start: exports.start(path)};
+};
+
+exports.makeWorker = function (path, config) {
+  var callbacks = {};
+  function fork() {
+    return child_process.fork(
+      __dirname + '/subprocess.js',
+      [path],
+      {silent: true}
+    );
+  }
+  var sub = fork();
+  var errlog = '';
+  sub.stderr.on('data', function (data) {
+    errlog += data;
+    // limit errlog to 2000 chars
+    errlog = errlog.slice(-2000);
+  });
+  sub.on('close', function (code) {
+    console.log('child process exited with code ' + code);
+    var cbs = callbacks;
+    callbacks = {};
+    var e = {message: 'Child process died'};
+    if (errlog.length) {
+      e.stack = errlog;
+    }
+    for (var k in cbs) {
+      cbs[k](e);
+    }
+    // restart sub process
+    sub = fork();
+  });
+  sub.send({type: 'init', data: config});
+  sub.on('message', function (msg) {
+    var cb = callbacks[msg.id];
+    delete callbacks[msg.id];
+    cb(msg.error, msg.result);
+  });
+  return {
+    stop: function (callback) {
+      console.log('Killing child process');
+      if (callback) {
+        sub.once('close', function (code) {
+          callback();
+        });
+      }
+      sub.kill();
+    },
+    ignored: function (doc, callback) {
+      var id = 'ignored:' + doc._id;
+      callbacks[id] = callback;
+      sub.send({id: id, type: 'ignored', data: doc});
+    },
+    migrated: function (doc, callback) {
+      var id = 'migrated:' + doc._id;
+      callbacks[id] = callback;
+      sub.send({id: id, type: 'migrated', data: doc});
+    },
+    migrate: function (doc, callback) {
+      var id = 'migrate:' + doc._id;
+      callbacks[id] = callback;
+      sub.send({id: id, type: 'migrate', data: doc});
+    }
+  };
 };
 
 /**
  * Load worker and start listening to CouchDB changes.
  */
 
-exports.start = _.curry(function (worker, config) {
+exports.start = _.curry(function (path, config) {
   // worker api
   var api = {
     stopped: false,
@@ -36,10 +101,10 @@ exports.start = _.curry(function (worker, config) {
   config = exports.readConfig(config);
 
   // initialize worker
-  var w = exports.loadWorker(worker, config);
+  var w = exports.makeWorker(path, config);
 
   // make sure the log database exists and push design doc to target db
-  exports.prepareDBs(config, w).apply(function () {
+  exports.prepareDBs(config, path).apply(function () {
 
     // get the checkpoint document from couchdb
     exports.getCheckpoint(config).apply(function (checkpoint) {
@@ -62,7 +127,9 @@ exports.start = _.curry(function (worker, config) {
       // update worker stop() function to stop changes feed
       api.stop = function (cb) {
         api.stopped = true;
-        changes.stop(cb);
+        changes.stop(function () {
+          w.stop(cb);
+        });
       };
 
       // create a stream of migration events for docs that are not ignored
@@ -94,10 +161,10 @@ exports.start = _.curry(function (worker, config) {
  * design documents
  */
 
-exports.prepareDBs = function (config, worker) {
+exports.prepareDBs = function (config, path) {
   return _([
     exports.ensureLogDB(config.log_database),
-    exports.ensureDesignDoc(config, worker),
+    exports.ensureDesignDoc(config, path),
     exports.writeStartupDoc(config)
   ])
   .series();
@@ -133,7 +200,8 @@ exports.ddocId = function (config) {
  * progress of the worker
  */
 
-exports.ensureDesignDoc = function (config, worker) {
+exports.ensureDesignDoc = function (config, path) {
+  var worker = require(path)(config);
   var ddoc = {
     _id: exports.ddocId(config),
     language: 'javascript',
@@ -257,13 +325,29 @@ exports.inBucket = function (bucket, id) {
          (bucket.end ? hash < bucket.end : true);
 };
 
+exports.addStatus = function (worker, migrations) {
+  return migrations
+    .flatMap(function (migration) {
+      return _.wrapCallback(worker.ignored)(migration.original)
+        .map(function (result) {
+          migration.ignored = result;
+          return migration;
+        });
+    })
+    .flatMap(function (migration) {
+      return _.wrapCallback(worker.migrated)(migration.original)
+        .map(function (result) {
+          migration.migrated = result;
+          return migration;
+        });
+    });
+};
 
 /**
  * Process a changes stream returning a stream of update arrays
  */
 
 exports.process = function (worker, config, changes) {
-  // force migrate function to return a stream
   var f = worker.migrate;
   if (config.timeout) {
     f = exports.timeout(f, config.timeout);
@@ -291,20 +375,20 @@ exports.process = function (worker, config, changes) {
 
   // return a stream of updates (emits an empty array if nothing to do
   // for this doc) an array of doc updates otherwise
-  return migrations.map(function (migration) {
+  return exports.addStatus(worker, migrations).map(function (migration) {
     if (bucket && !exports.inBucket(bucket, migration.original._id)) {
       // doc is not in the workers bucket, do nothing but update checkpoint
       migration.result = [];
       migration.success = false;
       return _([migration]);
     }
-    else if (worker.ignored(migration.original)) {
+    else if (migration.ignored) {
       // doc ignored, do nothing but update checkpoint
       migration.result = [];
       migration.success = false;
       return _([migration]);
     }
-    else if (worker.migrated(migration.original)) {
+    else if (migration.migrated) {
       // doc already migrated, do nothing but update checkpoint
       migration.result = [];
       migration.success = false;
@@ -340,43 +424,9 @@ exports.process = function (worker, config, changes) {
           push(null, _.nil);
         }
         else {
-          var source_doc = exports.getSourceDoc(migration, x.result);
-          // check if we got the original document back
-          if (!source_doc) {
-            var e = new Error(
-              'Migrate function did not return original document'
-            );
-            return next(
-              // write to log database
-              exports.writeErrorLog(config, e, migration).map(function (res) {
-                // write checkpoint back to source db so we can continue
-                // processing changes
-                migration.result = [];
-                migration.success = false;
-                return migration;
-              })
-            );
-          }
-          else if (!worker.migrated(source_doc) && !worker.ignored(source_doc)) {
-            var e2 = new Error(
-              'Migrate result did not match migrated or ignored predicates'
-            );
-            return next(
-              // write to log database
-              exports.writeErrorLog(config, e2, migration).map(function (res) {
-                // write checkpoint back to source db so we can continue
-                // processing changes
-                migration.result = [];
-                migration.success = false;
-                return migration;
-              })
-            );
-          }
-          else {
-            x.success = true;
-            push(null, x);
-            next();
-          }
+          x.success = true;
+          push(null, x);
+          next();
         }
       });
     }
@@ -417,21 +467,6 @@ exports.retry = function (f, attempts, interval) {
       }
     });
   };
-};
-
-/**
- * Looks for the original document in the results of the migrate function
- * call, and returns it. Returns null if not found.
- */
-
-exports.getSourceDoc = function (migration, result) {
-  var r = (Array.isArray(result) ? result: [result]);
-  for (var i = 0; i < r.length; i++) {
-    if (r[i]._id === migration.original._id) {
-      return r[i];
-    }
-  }
-  return null;
 };
 
 /**
@@ -728,28 +763,6 @@ exports.readConfig = function (config) {
     // default to checkpointing every 100 docs
     config.checkpoint_size = config.checkpoint_size || 100;
     return config;
-};
-
-/**
- * Initializes worker and checks that it exports the required properties
- */
-
-exports.loadWorker = function (worker, config) {
-    if (typeof worker !== 'function') {
-        throw new Error('Worker should expose a function as module.exports');
-    }
-    var w = worker(config);
-    function required(prop, type) {
-        if (!w[prop] || typeof w[prop] !== type) {
-            throw new Error(
-                'Worker should expose "' + prop + '" property as ' + type
-            );
-        }
-    }
-    required('ignored', 'function');
-    required('migrated', 'function');
-    required('migrate', 'function');
-    return w;
 };
 
 /**

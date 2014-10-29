@@ -3,30 +3,14 @@ var couchr = require('highland-couchr');
 var test = require('couch-worker-test-harness');
 
 
-test('log timeout errors', function (t) {
+test('log errors to separate db', function (t) {
   var config = {
     name: 'couch-worker-example',
     database: test.COUCH_URL + '/example',
-    log_database: test.COUCH_URL + '/errors',
-    timeout: 1000
+    log_database: test.COUCH_URL + '/errors'
   };
 
-  var tmpworker = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return doc._id[0] === '_';
-    };
-    api.migrated = function (doc) {
-      return doc.migrated;
-    };
-    api.migrate = function (doc, callback) {
-      doc.migrated = true;
-      setTimeout(function () {
-        return callback(null, doc);
-      }, 2000);
-    };
-    return api;
-  });
+  var tmpworker = createWorker(__dirname + '/log-processed-worker.js');
 
   var w = tmpworker.start(config);
   var doc = {_id: 'a'};
@@ -37,14 +21,27 @@ test('log timeout errors', function (t) {
       var q = {include_docs: true};
       couchr.get(logurl, q).apply(function (res) {
         var rows = res.body.rows;
-        t.equal(rows.length, 2);
         var logrow = rows.filter(function (x) {
-          return x.doc.type === 'error';
+          return x.doc.type === 'success';
         })[0];
         var logdoc = logrow.doc;
         delete logdoc._rev;
         delete logdoc._id;
-        t.ok(/timed out/i.test(logdoc.error.message), 'timeout error logged');
+        t.ok(logdoc.time, 'log doc has time property');
+        var timediff = Math.abs(
+          new Date(logdoc.time).getTime() - new Date().getTime()
+        );
+        t.ok(timediff < 1000*60*60*24, 'logged some time today');
+        // delete time from doc for easier comparison
+        delete logdoc.time;
+        t.deepEqual(logdoc, {
+          type: 'success',
+          worker: 'couch-worker-example',
+          //time: '2009-02-13T23:31:30.123Z',
+          database: test.COUCH_URL_NO_AUTH + '/example',
+          seq: 1,
+          docid: doc._id
+        });
         w.stop();
         t.end();
       });

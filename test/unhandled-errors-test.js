@@ -3,37 +3,16 @@ var couchr = require('highland-couchr');
 var test = require('couch-worker-test-harness');
 
 
-test('log errors to separate db after retrying', function (t) {
+test('unhandled error restarts sub-process', function (t) {
   var config = {
     name: 'couch-worker-example',
     database: test.COUCH_URL + '/example',
-    log_database: test.COUCH_URL + '/errors',
-    retry_attempts: 3,
-    retry_interval: 500
+    log_database: test.COUCH_URL + '/errors'
   };
 
-  var migrate_calls = 0;
-
-  var tmpworker = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return doc._id[0] === '_';
-    };
-    api.migrated = function (doc) {
-      return doc.migrated;
-    };
-    api.migrate = function (doc, callback) {
-      migrate_calls++;
-      setTimeout(function () {
-        doc.migrated = true;
-        var e = new Error('Fail!');
-        e.stack = '<stacktrace>';
-        e.custom = 123;
-        return callback(e);
-      }, 100);
-    };
-    return api;
-  });
+  var tmpworker = createWorker(
+    __dirname + '/unhandled-errors-worker.js'
+  );
 
   var os = require('os');
   var _hostname = os.hostname;
@@ -94,33 +73,29 @@ test('log errors to separate db after retrying', function (t) {
         var timediff = Math.abs(
           new Date(logdoc.time).getTime() - new Date().getTime()
         );
-        t.equal(migrate_calls, 3);
         t.ok(timediff < 1000*60*60*24, 'error logged some time today');
         // delete time from doc for easier comparison
         delete logdoc.time;
-        t.deepEqual(logdoc, {
-          type: 'error',
-          worker: {
-            name: 'couch-worker-example',
-            hostname: 'fakehostname',
-            platform: 'linux',
-            node_version: 'v0.10.30',
-            arch: 'ia32',
-            addresses: [
-              '10.1.4.133',
-              'fe80::221:6aff:fe41:a8d6'
-            ]
-          },
-          //time: '2009-02-13T23:31:30.123Z',
-          database: test.COUCH_URL_NO_AUTH + '/example',
-          seq: 1,
-          error: {
-            message: 'Fail!',
-            stack: '<stacktrace>',
-            custom: 123
-          },
-          doc: doc
+        t.equal(logdoc.type, 'error');
+        t.deepEqual(logdoc.worker, {
+          name: 'couch-worker-example',
+          hostname: 'fakehostname',
+          platform: 'linux',
+          node_version: 'v0.10.30',
+          arch: 'ia32',
+          addresses: [
+            '10.1.4.133',
+            'fe80::221:6aff:fe41:a8d6'
+          ]
         });
+        t.equal(logdoc.database, test.COUCH_URL_NO_AUTH + '/example');
+        t.equal(logdoc.seq, 1);
+        t.equal(logdoc.error.message, 'Child process died');
+        t.ok(
+          logdoc.error.stack.indexOf('<stacktrace>') !== -1,
+          'child stacktrace included in logdoc'
+        );
+        t.deepEqual(logdoc.doc, doc);
         os.hostname = _hostname;
         os.platform = _platform;
         os.arch = _arch;

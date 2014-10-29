@@ -2,6 +2,7 @@ var createWorker = require('../index').createWorker;
 var couchr = require('highland-couchr');
 var test = require('couch-worker-test-harness');
 var _ = require('highland');
+var fs = require('fs');
 
 
 test('docs from priority queue never cause a checkpoint', function (t) {
@@ -10,27 +11,13 @@ test('docs from priority queue never cause a checkpoint', function (t) {
     database: test.COUCH_URL + '/example',
     log_database: test.COUCH_URL + '/errors',
     checkpoint_size: 1,
-    concurrency: 1
+    concurrency: 1,
+    tmpfile: __dirname + '/priority-no-checkpoint.tmp'
   };
 
-  var migrate_calls = [];
-  var tmpworker = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return doc._id[0] === '_';
-    };
-    api.migrated = function (doc) {
-      return doc.migrated;
-    };
-    api.migrate = function (doc, callback) {
-      migrate_calls.push(doc._id);
-      doc.migrated = true;
-      setTimeout(function () {
-        return callback(null, doc);
-      }, 2000);
-    };
-    return api;
-  });
+  var tmpworker = createWorker(
+    __dirname + '/priority-no-checkpoint-worker.js'
+  );
 
   var docs = _([
     {_id: 'a'},
@@ -40,6 +27,14 @@ test('docs from priority queue never cause a checkpoint', function (t) {
     {_id: 'e'},
     {_id: 'f'}
   ]);
+
+  var getMigrateCalls = function () {
+    // should have just started processing priority doc
+    var migrate_calls = fs.readFileSync(config.tmpfile).toString().split('\n');
+    // remove last newline
+    migrate_calls.pop();
+    return migrate_calls;
+  };
 
   // post all docs to couchdb
   docs.map(couchr.post(test.COUCH_URL + '/example')).series()
@@ -58,17 +53,13 @@ test('docs from priority queue never cause a checkpoint', function (t) {
         couchr.post(test.COUCH_URL + '/errors', pdoc).apply(function (res) {
           // wait until doc 'a' done and checkpointed
           setTimeout(function () {
-            // should have just started processing priority doc
-            t.deepEqual(migrate_calls, ['a','b','f']);
+            t.deepEqual(getMigrateCalls(), ['a','b','f']);
             var local = test.COUCH_URL + '/example/_local/couch-worker-example';
-            console.error(local);
             couchr.get(local, {}).apply(function (res) {
-              console.error(res.body);
               t.equal(res.body.seq, 2);
               setTimeout(function () {
                 couchr.get(local, {}).apply(function (res) {
-                  console.error(res.body);
-                  t.deepEqual(migrate_calls, ['a','b','f','c','d']);
+                  t.deepEqual(getMigrateCalls(), ['a','b','f','c','d']);
                   // make sure priority migration didn't cause checkpoint update
                   t.equal(res.body.seq, 3);
                   w.stop();
