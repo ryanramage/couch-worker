@@ -30,7 +30,7 @@ exports.makeWorker = function (path, config) {
   */
   sub.send({type: 'init', data: config});
   sub.on('message', function (msg) {
-    var cb = callbacks[msg.id]
+    var cb = callbacks[msg.id];
     delete callbacks[msg.id];
     cb(msg.error, msg.result);
   });

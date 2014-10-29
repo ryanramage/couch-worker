@@ -11,25 +11,13 @@ test('log timeout errors', function (t) {
     timeout: 1000
   };
 
-  var tmpworker = createWorker(function (config) {
-    var api = {};
-    api.ignored = function (doc) {
-      return doc._id[0] === '_';
-    };
-    api.migrated = function (doc) {
-      return doc.migrated;
-    };
-    api.migrate = function (doc, callback) {
-      doc.migrated = true;
-      setTimeout(function () {
-        return callback(null, doc);
-      }, 2000);
-    };
-    return api;
-  });
+  var tmpworker = createWorker(
+    __dirname + '/test-worker-timeouts-worker.js'
+  );
 
   var w = tmpworker.start(config);
   var doc = {_id: 'a'};
+
   couchr.post(test.COUCH_URL + '/example', doc).apply(function (res) {
     doc._rev = res.body.rev;
     setTimeout(function () {
