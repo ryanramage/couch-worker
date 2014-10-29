@@ -19,22 +19,41 @@ exports.createWorker = function (path) {
 };
 
 exports.makeWorker = function (path, config) {
-  //var cb;
-  var sub = child_process.fork(__dirname + '/subprocess.js', [path]);
-  /*
-  sub.on('close', function (code) {
-      console.log('child process exited with code ' + code);
-      if (cb) {
-      }
+  var callbacks = {};
+  function fork() {
+    return child_process.fork(
+      __dirname + '/subprocess.js',
+      [path],
+      {silent: true}
+    );
+  }
+  var sub = fork();
+  var errlog = '';
+  sub.stderr.on('data', function (data) {
+    errlog += data;
+    // limit errlog to 2000 chars
+    errlog = errlog.slice(-2000);
   });
-  */
+  sub.on('close', function (code) {
+    console.log('child process exited with code ' + code);
+    var cbs = callbacks;
+    callbacks = {};
+    var e = {message: 'Child process died'};
+    if (errlog.length) {
+      e.stack = errlog;
+    }
+    for (var k in cbs) {
+      cbs[k](e);
+    }
+    // restart sub process
+    sub = fork();
+  });
   sub.send({type: 'init', data: config});
   sub.on('message', function (msg) {
     var cb = callbacks[msg.id];
     delete callbacks[msg.id];
     cb(msg.error, msg.result);
   });
-  var callbacks = {};
   return {
     stop: function (callback) {
       console.log('Killing child process');
