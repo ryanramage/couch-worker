@@ -30,15 +30,14 @@ exports.makeWorker = function (path, config) {
   var sub = fork();
   var errlog = '';
   sub.stderr.on('data', function (data) {
-    errlog += data;
+    errlog += data.toString();
     // limit errlog to 2000 chars
     errlog = errlog.slice(-2000);
   });
   sub.on('close', function (code) {
-    console.log('child process exited with code ' + code);
     var cbs = callbacks;
     callbacks = {};
-    var e = {message: 'Child process died'};
+    var e = {message: 'Child process died', code: code};
     if (errlog.length) {
       e.stack = errlog;
     }
@@ -56,7 +55,7 @@ exports.makeWorker = function (path, config) {
   });
   return {
     stop: function (callback) {
-      console.log('Killing child process');
+      sub.removeAllListeners('close');
       if (callback) {
         sub.once('close', function (code) {
           callback();
