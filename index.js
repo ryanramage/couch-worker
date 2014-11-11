@@ -577,22 +577,55 @@ exports.getCheckpoint = function (config) {
  */
 
 exports.listen = function (since, config) {
-  var priority = exports.getPriority(config);
-  var changes = exports.getChanges(since, config);
-  var s = _([priority, changes]).merge();
-  s.stop = function (callback) {
-    changes.stop(function () {
-      priority.stop(callback);
+  var s = _(function (push, next) {
+    if (s.stopped) {
+      return push(null, _.nil);
+    }
+    exports.hasPriorityView(config).errors(push).apply(function (hasview) {
+      if (s.stopped) {
+        return push(null, _.nil);
+      }
+      var priority = exports.getPriority(config);
+      var changes = exports.getChanges(since, config);
+      s.stop = function (callback) {
+        changes.stop(function () {
+          priority.stop(callback);
+        });
+      };
+      return next(_([priority, changes]).merge());
     });
+  });
+  s.stopped = false;
+  s.stop = function () {
+    s.stopped = true;
   };
   return s;
 };
 
-exports.getPriority = function (config) {
+exports.hasPriorityView = function (config, callback) {
+  var url = config.log_database + '/_design/couch-worker-dashboard';
+  return couchr.get(url, {})
+    .errors(function (err, rethrow) {
+      if (err.error !== 'not_found') {
+        rethrow(err);
+      }
+    })
+    .map(function (res) {
+      return res.body.views.priority;
+    });
+};
+
+exports.getPriority = function (config, hasview) {
   var opts = {
     include_docs: true,
     since: 0
   };
+  if (hasview) {
+    // use priority view from couch-worker-dashboard for more efficient
+    // changes feed filtering if available
+    opt.filter = '_view';
+    opt.view = 'couch-worker-dashboard/priority';
+  }
   // TODO: use a ddoc with filter
   var changes = couchr.changes(config.log_database, opts);
   var s = changes.filter(function (change) {
