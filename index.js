@@ -24,16 +24,18 @@ exports.makeWorker = function (path, config) {
     return child_process.fork(
       __dirname + '/subprocess.js',
       [path],
-      {silent: true}
+      {silent: false}
     );
   }
   var sub = fork();
   var errlog = '';
-  sub.stderr.on('data', function (data) {
-    errlog += data.toString();
-    // limit errlog to 2000 chars
-    errlog = errlog.slice(-2000);
-  });
+  // sub.stderr.on('data', function (data) {
+  //   var str = data.toString();
+  //   console.log(str);
+  //   errlog += str
+  //   // limit errlog to 2000 chars
+  //   errlog = errlog.slice(-2000);
+  // });
   sub.on('close', function (code) {
     var cbs = callbacks;
     callbacks = {};
@@ -53,6 +55,12 @@ exports.makeWorker = function (path, config) {
     delete callbacks[msg.id];
     cb(msg.error, msg.result);
   });
+
+  var channel_errors = function(e){
+    console.log('channel errors', e);
+    //sub = fork();
+  };
+
   return {
     stop: function (callback) {
       sub.removeAllListeners('close');
@@ -66,17 +74,23 @@ exports.makeWorker = function (path, config) {
     ignored: function (doc, callback) {
       var id = 'ignored:' + doc._id;
       callbacks[id] = callback;
-      sub.send({id: id, type: 'ignored', data: doc});
+      try {
+        sub.send({id: id, type: 'ignored', data: doc});
+      } catch(e) {  channel_errors(e); }
     },
     migrated: function (doc, callback) {
       var id = 'migrated:' + doc._id;
       callbacks[id] = callback;
-      sub.send({id: id, type: 'migrated', data: doc});
+      try {
+        sub.send({id: id, type: 'migrated', data: doc});
+      } catch(e) {  channel_errors(e); }
     },
     migrate: function (doc, callback) {
       var id = 'migrate:' + doc._id;
       callbacks[id] = callback;
-      sub.send({id: id, type: 'migrate', data: doc});
+      try {
+        sub.send({id: id, type: 'migrate', data: doc});
+      } catch(e) {  channel_errors(e); }
     }
   };
 };
