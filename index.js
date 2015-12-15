@@ -58,9 +58,9 @@ exports.makeWorker = function (path, config) {
 
   var channel_errors = function(e){
     console.log('channel errors', e);
-    sub.kill()
-    console.log('exiting do to a problem child.')
-    process.exit(1)
+    sub.kill();
+    console.log('exiting do to a problem child.');
+    process.exit(1);
     //sub = fork();
   };
 
