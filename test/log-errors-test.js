@@ -80,7 +80,7 @@ test('log errors to separate db', function (t) {
             name: 'couch-worker-example',
             hostname: 'fakehostname',
             platform: 'linux',
-            node_version: 'v0.10.30',
+            node_version: _version,
             arch: 'ia32',
             addresses: [
               '10.1.4.133',
