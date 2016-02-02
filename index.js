@@ -802,6 +802,7 @@ exports.logBatch = _.curry(function (config, migration) {
         writes.join('\n  ')
       );
     }
+    if (config.on_batch) config.on_batch(writes.length)
 });
 
 /**
