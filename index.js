@@ -543,12 +543,23 @@ exports.getCheckpoint = function (config) {
  */
 
 exports.listen = function (since, config) {
-  var priority = exports.getPriority(config);
-  var changes = exports.getChanges(since, config);
-  var s = _([priority, changes]).merge();
+
+
+  var priority;
+  var changes;
+  var s;
+
+  if (config.runPriority) {
+    priority = exports.getPriority(config);
+    changes = exports.getChanges(since, config);
+    s = _([priority, changes]).merge();
+  } else {
+    changes = exports.getChanges(since, config);
+    s = _([changes]).merge();
+  }
   s.stop = function (callback) {
     changes.stop(function () {
-      priority.stop(callback);
+      if (config.runPriority) priority.stop(callback);
     });
   };
   return s;
