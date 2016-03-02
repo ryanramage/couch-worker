@@ -509,6 +509,7 @@ exports.getAddresses = function () {
  */
 
 exports.getCheckpoint = function (config) {
+  console.log('getting checkpoint')
   return _(function (push, next) {
     // where to store checkpoint / sequence id during processing
     var checkpoint_url = config.database +
@@ -519,7 +520,7 @@ exports.getCheckpoint = function (config) {
       .stopOnError(function (err, rethrow) {
         errored = true;
         if (err.error === 'not_found') {
-          if (config.since) push(null, {seq: config.since});
+          if (config.sinceRev) push(null, {seq: config.sinceRev});
           else push(null, {seq: 0});
           push(null, _.nil);
         }
