@@ -519,7 +519,8 @@ exports.getCheckpoint = function (config) {
       .stopOnError(function (err, rethrow) {
         errored = true;
         if (err.error === 'not_found') {
-          push(null, {seq: 0});
+          if (config.since) push(null, {seq: config.since});
+          else push(null, {seq: 0});
           push(null, _.nil);
         }
         else {
