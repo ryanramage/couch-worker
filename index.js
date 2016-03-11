@@ -138,6 +138,7 @@ exports.ensureDesignDoc = function (config, worker) {
     _id: exports.ddocId(config),
     language: 'javascript',
     views: {
+      lib: {},
       ignored: {
         map: 'function (doc) {\n' +
           'if ((' + worker.ignored.toString() + '(doc))) emit(doc._id, 1);' +
@@ -160,6 +161,12 @@ exports.ensureDesignDoc = function (config, worker) {
       }
     }
   };
+  if (worker.lib) {
+    Object.keys(worker.lib).forEach(function (lib) {
+      ddoc.views.lib[lib] = worker.lib[lib];
+    })
+  }
+
   var ddoc_url = config.database + '/' + ddoc._id;
   return couchr.get(ddoc_url, {}).consume(function (err, x, push, next) {
     if (err) {

@@ -1,7 +1,7 @@
 {
   "name": "couch-worker",
   "descriptions": "Shared code for managing couchdb workers",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "dependencies": {
     "highland": "^2.0.0",
     "highland-couchr": "^1.6.1",
