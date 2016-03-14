@@ -6,6 +6,10 @@ var os = require('os');
 var _ = require('highland');
 
 
+exports.funcFromString = function (str) {
+  return new Function('doc', str)
+}
+
 /**
  * Use this to create a worker instance with a .start() method that listens
  * to CouchDB for changes. Your worker should be a function which accepts a
@@ -759,16 +763,22 @@ exports.loadWorker = function (worker, config) {
         throw new Error('Worker should expose a function as module.exports');
     }
     var w = worker(config);
-    function required(prop, type) {
-        if (!w[prop] || typeof w[prop] !== type) {
+    function checkFunction(prop) {
+        if (!w[prop]) throw new Error('Worker should expose "' + prop + '" property as a function or string')
+        if (typeof w[prop] === 'string') {
+          w[prop] = exports.funcFromString(w[prop])
+          return
+        }
+        if (typeof w[prop] !== 'function') {
+
             throw new Error(
-                'Worker should expose "' + prop + '" property as ' + type
+                'Worker should expose "' + prop + '" property as a function or string'
             );
         }
     }
-    required('ignored', 'function');
-    required('migrated', 'function');
-    required('migrate', 'function');
+    checkFunction('ignored');
+    checkFunction('migrated');
+    checkFunction('migrate');
     return w;
 };
 
